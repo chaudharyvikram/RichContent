@@ -303,21 +303,15 @@ final class EditorBehaviorTests: XCTestCase {
         XCTAssertNotNil(editor.slash)
     }
 
-    func testColorMenuPutsAppColorsFirstAndCollapsesPalette() {
-        editor.configuration.assetColors = [.asset("Brand")]
+    func testColorMenuHasPickerThenPaletteInTwoSections() {
         let menu = EditorMenus.color(editor, wholeBlock: false)
-        let sections = menu.children.compactMap { $0 as? UIMenu }
-        XCTAssertEqual(sections.map(\.title), ["Text colors", "Background colors"])
-        for section in sections {
-            XCTAssertTrue(section.options.contains(.displayInline), "both sections are expanded")
-            XCTAssertEqual(section.children.count, 1 + 1 + RichColor.allCases.count)
-            XCTAssertEqual(section.children.first?.title, "Choose from color picker…")
-        }
-        XCTAssertEqual(sections[0].children[1].title, "Brand", "asset colors come before the palette")
-        XCTAssertEqual(sections[1].children[1].title, "Brand background")
-        XCTAssertEqual(sections[0].children[2].title, "Default")
-        XCTAssertTrue(RichEditorCommand.filter(RichEditorCommand.catalog(editor.configuration), query: "brand")
-            .contains { $0.action == .textColor(.asset("Brand")) })
+        let groups = menu.children.compactMap { $0 as? UIMenu }
+        XCTAssertEqual(groups.map(\.title), ["Text colors", "", "Background colors", ""])
+        XCTAssertTrue(groups.allSatisfy { $0.options.contains(.displayInline) }, "all groups are expanded")
+        XCTAssertEqual(groups[0].children.map(\.title), ["Choose from color picker…"])
+        XCTAssertEqual(groups[1].children.map(\.title), RichColor.allCases.map(\.title))
+        XCTAssertEqual(groups[2].children.map(\.title), ["Choose from color picker…"])
+        XCTAssertEqual(groups[3].children.first?.title, "Default background")
     }
 
     func testSlashFilterRanking() {
@@ -355,6 +349,30 @@ final class EditorBehaviorTests: XCTestCase {
 
     // MARK: Formats
 
+    /// iOS replaces the typed word when a suggestion is picked (or autocorrect
+    /// runs on space), inserting with whatever attributes it picked up.
+    private func acceptSuggestion(_ word: String, for range: NSRange) {
+        XCTAssertTrue(editor.textView(textView, shouldChangeTextIn: range, replacementText: word))
+        let plain: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 17)]
+        textView.textStorage.replaceCharacters(in: range, with: NSAttributedString(string: word, attributes: plain))
+        textView.selectedRange = NSRange(location: range.location + (word as NSString).length, length: 0)
+        editor.textViewDidChangeSelection(textView)   // UIKit reports the caret move first
+        editor.textViewDidChange(textView)
+    }
+
+    func testSuggestionKeepsTheFormattingOfTheWordItReplaces() {
+        type("plain ")
+        editor.toggle(.bold)
+        type("helo")
+        acceptSuggestion("hello", for: NSRange(location: 6, length: 4))
+
+        XCTAssertEqual(textView.textStorage.string, "plain hello")
+        XCTAssertTrue(InlineInfo(textView.textStorage.attributes(at: 6, effectiveRange: nil)).bold)
+        XCTAssertTrue(InlineInfo(textView.textStorage.attributes(at: 10, effectiveRange: nil)).bold)
+        XCTAssertFalse(InlineInfo(textView.textStorage.attributes(at: 0, effectiveRange: nil)).bold)
+        XCTAssertTrue(editor.activeFormats.contains(.bold), "the tool stays on after the suggestion")
+    }
+
     func testInlineFormatsOnSelectionAndCaret() {
         type("hello world")
         textView.selectedRange = NSRange(location: 0, length: 5)
@@ -372,6 +390,150 @@ final class EditorBehaviorTests: XCTestCase {
         editor.toggle(.italic)
         type("!")
         XCTAssertTrue(InlineInfo(textView.textStorage.attributes(at: textView.textStorage.length - 1, effectiveRange: nil)).italic)
+    }
+
+    // MARK: Image uploads
+
+    private struct UploadError: Error {}
+
+    private func waitUntil(_ condition: () -> Bool) async throws {
+        for _ in 0..<200 where !condition() { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertTrue(condition())
+    }
+
+    private var photo: UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+    }
+
+    func testFailedImageUploadBlocksSendingUntilRetried() async throws {
+        var fails = true
+        var reported = 0
+        editor.configuration.showsImageUploadFailureAlert = false
+        editor.onImageUploadFailure = { _ in reported += 1 }
+        editor.imageUploader = { _ in
+            if fails { throw UploadError() }
+            return URL(string: "https://cdn.example.com/photo.jpg")!
+        }
+
+        editor.insertImage(photo)
+        XCTAssertEqual(editor.pendingImageUploads, 1)
+        XCTAssertFalse(editor.allImagesUploaded)
+
+        try await waitUntil { editor.failedImageUploads == 1 }
+        XCTAssertEqual(editor.pendingImageUploads, 0)
+        XCTAssertFalse(editor.allImagesUploaded)
+        XCTAssertEqual(reported, 1)
+        let attachment = textView.textStorage.attribute(.attachment, at: 0, effectiveRange: nil) as? RichImageAttachment
+        XCTAssertEqual(attachment?.uploadState, .failed)
+
+        fails = false
+        editor.retryFailedImageUploads()
+        XCTAssertEqual(editor.pendingImageUploads, 1)
+        try await waitUntil { editor.allImagesUploaded }
+        XCTAssertTrue(editor.html.contains("https://cdn.example.com/photo.jpg"))
+        XCTAssertFalse(editor.html.contains("data:image"))
+    }
+
+    func testFailedImageCanBeRemoved() async throws {
+        editor.configuration.showsImageUploadFailureAlert = false
+        editor.imageUploader = { _ in throw UploadError() }
+        type("Hello")
+        editor.insertImage(photo)
+        try await waitUntil { editor.failedImageUploads == 1 }
+
+        editor.removeFailedImages()
+        XCTAssertTrue(editor.allImagesUploaded)
+        XCTAssertFalse(editor.html.contains("<img"))
+        XCTAssertTrue(blocks.contains("paragraph@1: Hello"))
+    }
+
+    func testDeletingAnUploadingImageUnblocksSending() async throws {
+        editor.imageUploader = { _ in
+            try await Task.sleep(nanoseconds: 5_000_000_000)
+            return URL(string: "https://cdn.example.com/slow.jpg")!
+        }
+        editor.insertImage(photo)
+        XCTAssertFalse(editor.allImagesUploaded)
+        textView.selectedRange = NSRange(location: 0, length: 0)
+        editor.deleteBlock()
+        XCTAssertTrue(editor.allImagesUploaded)
+    }
+
+    func testReplacingOrRemovingTheTextViewKeepsTheDocument() {
+        type("Hello")
+        // SwiftUI switching layouts: a new text view while the old one is alive.
+        let replacement = RichEditorTextView()
+        editor.attach(to: replacement)
+        XCTAssertEqual(replacement.textStorage.string, "Hello")
+        // SwiftUI dismantling it: the document stays readable and moves on.
+        editor.detach(replacement)
+        XCTAssertTrue(editor.html.contains("Hello"))
+        let next = RichEditorTextView()
+        editor.attach(to: next)
+        XCTAssertEqual(next.textStorage.string, "Hello")
+    }
+
+    func testRichContentEditorTextViewLeavesTheQuoteToSwiftUI() {
+        let hosted = RichEditorTextView()
+        hosted.showsQuotedOriginal = false
+        let controller = RichEditorController()
+        controller.attach(to: hosted)
+        controller.quotedOriginal = QuotedOriginal(.plain("Original"), attribution: "Alex wrote:")
+        XCTAssertNil(hosted.quotedHost)
+        XCTAssertTrue(controller.replyHTML().contains("Original"))
+    }
+
+    func testQuotedOriginalIsShownButNotEditableAndIsSent() {
+        type("Sounds good")
+        XCTAssertEqual(editor.replyHTML(), editor.html)
+        XCTAssertNil(textView.quotedHost)
+
+        let original = RichContent.html("<p>Can we demo on Thursday?</p>")
+        editor.quotedOriginal = QuotedOriginal(original, attribution: "On Oct 28, Alex wrote:")
+        XCTAssertNotNil(textView.quotedHost)
+        XCTAssertTrue(textView.quotedHost?.view.superview === textView)
+        // Not part of the editable document…
+        XCTAssertFalse(editor.html.contains("Can we demo"))
+        XCTAssertEqual(blocks, ["paragraph@1: Sounds good"])
+        // …but sent with the reply.
+        XCTAssertEqual(editor.replyHTML(), editor.replyHTML(quoting: original, attribution: "On Oct 28, Alex wrote:"))
+        XCTAssertTrue(editor.replyHTML().contains("Can we demo on Thursday?"))
+
+        editor.quotedOriginal = nil
+        XCTAssertNil(textView.quotedHost)
+        XCTAssertEqual(editor.replyHTML(), editor.html)
+    }
+
+    func testPickedColorAppliesToSelectionFromWhenPickerOpened() {
+        type("hello world")
+        let purple = UIColor(red: 0.6, green: 0.2, blue: 0.9, alpha: 1)
+        // The picker moved the caret away; the color still goes to "hello".
+        caretAtEnd()
+        editor.applyPickedColor(purple, background: false, wholeBlock: false, range: NSRange(location: 0, length: 5))
+        XCTAssertEqual(InlineInfo(textView.textStorage.attributes(at: 0, effectiveRange: nil)).color, .custom(purple))
+        XCTAssertNil(InlineInfo(textView.textStorage.attributes(at: 6, effectiveRange: nil)).color)
+
+        editor.applyPickedColor(purple, background: true, wholeBlock: false, range: NSRange(location: 6, length: 5))
+        XCTAssertEqual(InlineInfo(textView.textStorage.attributes(at: 6, effectiveRange: nil)).highlight, .custom(purple))
+    }
+
+    func testColorPickerAppliesOnceAndOnlyWhenChanged() {
+        var applied: [UIColor] = []
+        let done = expectation(description: "applied")
+        let coordinator = ColorPickerCoordinator(initial: .black) { applied.append($0); done.fulfill() }
+        coordinator.finish(with: .purple)
+        coordinator.finish(with: .red)   // ✕ and swipe-dismiss both reporting
+        wait(for: [done], timeout: 1)
+        XCTAssertEqual(applied.map { RichColor.custom($0) }, [.custom(.purple)])
+
+        var unchanged = false
+        let closedUntouched = ColorPickerCoordinator(initial: .black) { _ in unchanged = true }
+        closedUntouched.finish(with: .black)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertFalse(unchanged)
     }
 
     func testHeadingBoldIsNotAFormat() {
@@ -409,5 +571,120 @@ final class EditorBehaviorTests: XCTestCase {
         editor.load(.auto("<p>html</p>\n\n\n## md"))
         XCTAssertEqual(blocks, ["paragraph@1: html", "heading2@1: md"])
         XCTAssertEqual(editor.markdown, "html\n\n## md")
+    }
+
+    // MARK: Tables
+
+    private let tableHTML = #"<table data-type="table"><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table><p>after</p>"#
+
+    /// Lays the document out and returns the editor laid over its table.
+    private func tableView() throws -> EditorTableView {
+        textView.setNeedsLayout()
+        textView.layoutIfNeeded()
+        return try XCTUnwrap(textView.tableViews.values.first)
+    }
+
+    /// Types into a cell's editor like the keyboard.
+    private func type(_ string: String, in cell: RichEditorController) {
+        let tv = cell.textView!
+        cell.textViewDidBeginEditing(tv)
+        let range = NSRange(location: tv.textStorage.length, length: 0)
+        tv.textStorage.replaceCharacters(in: range, with: NSAttributedString(string: string, attributes: tv.typingAttributes))
+        tv.selectedRange = NSRange(location: range.location + (string as NSString).length, length: 0)
+        cell.textViewDidChange(tv)
+    }
+
+    func testTableCellsAreEditedInPlace() throws {
+        load(tableHTML)
+        let table = try tableView()
+        XCTAssertEqual(table.cells.count, 2)
+        XCTAssertEqual(table.cells[0].count, 2)
+        XCTAssertFalse(table.attachment.drawsCellContent, "cell editors draw the cells")
+
+        var changes = 0
+        editor.onChange = { _ in changes += 1 }
+        let cell = table.cells[1][0]
+        type("0", in: cell)
+        XCTAssertGreaterThan(changes, 0)
+        XCTAssertTrue(editor.html.contains("10"), editor.html)
+        XCTAssertEqual(blocks.first, "table@1[header]: A|B / 10|2")
+    }
+
+    func testToolbarFormatsTheFocusedCell() throws {
+        load(tableHTML)
+        let cell = try tableView().cells[1][1]
+        cell.textViewDidBeginEditing(cell.textView!)
+        XCTAssertTrue(editor.focusedEditor === cell)
+        XCTAssertTrue(editor.isInTable)
+        XCTAssertTrue(editor.isFocused)
+
+        cell.textView!.selectedRange = NSRange(location: 0, length: 1)
+        editor.focusedEditor.toggle(.bold)
+        XCTAssertTrue(editor.html.contains("<strong>2</strong>"), editor.html)
+        XCTAssertTrue(editor.html.contains("after"))
+    }
+
+    func testCellsDoNotNestTablesOrShowHandles() throws {
+        load(tableHTML)
+        let cell = try tableView().cells[0][0]
+        XCTAssertFalse(cell.configuration.allowedBlocks.contains(.table))
+        XCTAssertFalse(cell.configuration.showsBlockHandles)
+        XCTAssertFalse(RichEditorCommand.catalog(cell.configuration).contains { $0.action == .block(.table) })
+        XCTAssertTrue(RichEditorCommand.catalog(editor.configuration).contains { $0.action == .block(.table) })
+    }
+
+    func testInsertTable() throws {
+        load("<p>before</p>")
+        caretAtEnd()
+        editor.insertTable(rows: 2, columns: 3)
+        XCTAssertEqual(Array(blocks.prefix(2)), ["paragraph@1: before", "table@1[header]: || / ||"])
+        let table = try tableView()
+        XCTAssertEqual(table.cells.count, 2)
+        XCTAssertEqual(table.cells[0].count, 3)
+        XCTAssertTrue(editor.html.contains("<table"), editor.html)
+    }
+
+    func testTableRowsColumnsAndHeader() throws {
+        load(tableHTML)
+        let cell = try tableView().cells[1][0]
+        cell.textViewDidBeginEditing(cell.textView!)
+
+        editor.insertTableRow(below: true)
+        XCTAssertEqual(blocks.first, "table@1[header]: A|B / 1|2 / |")
+        editor.insertTableColumn(right: false)
+        XCTAssertEqual(blocks.first, "table@1[header]: |A|B / |1|2 / ||")
+        editor.deleteTableColumn()
+        XCTAssertEqual(blocks.first, "table@1[header]: A|B / 1|2 / |")
+        editor.deleteTableRow()
+        XCTAssertEqual(blocks.first, "table@1[header]: A|B / 1|2")
+        editor.toggleTableHeaderRow()
+        XCTAssertEqual(blocks.first, "table@1: A|B / 1|2")
+        XCTAssertFalse(editor.tableHasHeaderRow)
+    }
+
+    func testTabMovesBetweenCellsAndAddsARow() throws {
+        load(tableHTML)
+        let table = try tableView()
+        let last = table.cells[1][1]
+        last.textViewDidBeginEditing(last.textView!)
+        XCTAssertTrue(last.moveToAdjacentCell(forward: true))
+        XCTAssertEqual(blocks.first, "table@1[header]: A|B / 1|2 / |")
+        XCTAssertEqual(editor.focusedEditor.tableCell?.row, 2)
+        XCTAssertEqual(editor.focusedEditor.tableCell?.column, 0)
+
+        let first = try tableView().cells[0][0]
+        XCTAssertTrue(first.moveToAdjacentCell(forward: false), "stays in the first cell")
+        XCTAssertTrue(first.moveToAdjacentCell(forward: true))
+        XCTAssertEqual(blocks.first, "table@1[header]: A|B / 1|2 / |", "no row added inside the table")
+    }
+
+    func testDeleteTable() throws {
+        load(tableHTML)
+        let cell = try tableView().cells[0][0]
+        cell.textViewDidBeginEditing(cell.textView!)
+        editor.deleteTable()
+        XCTAssertEqual(blocks, ["paragraph@1: after"])
+        textView.layoutIfNeeded()
+        XCTAssertTrue(textView.tableViews.isEmpty)
     }
 }

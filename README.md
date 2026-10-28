@@ -70,7 +70,7 @@ let attributed = RichContentRenderer.attributedString(for: .markdown(notes))
 | `.attributed` | as-is, or Markdown layout | If it came from `AttributedString(markdown:)` its blocks are laid out; UIKit fonts/colors kept, missing ones filled from the style |
 | `.nsAttributed` | as-is | Missing font / color / paragraph style filled from the style |
 | `.html` (simple) | `HTMLRenderer` → native text | `<blockquote>` → same quote bars; fonts mapped to the app font, near-black → `label` (dark mode), compact spacing, no network |
-| `.html` (tables, images, media) | `RichWebContentView` | Sandboxed `WKWebView`: JS off, remote content blocked by CSP unless `allowsRemoteContent`, auto-height, links routed to `openURL`, light/dark CSS from the style |
+| `.html` (tables, images, media) | `RichWebContentView` | Sandboxed `WKWebView`: JS off, remote content loads unless `allowsRemoteContent` is off (then blocked by CSP), auto-height, links routed to `openURL`, light/dark CSS from the style |
 | `.mixed` | all of the above | Consecutive native parts merge into **one** selectable text view; web parts sit between them |
 
 `htmlRendering` = `.automatic` (default), `.native` or `.web` overrides the routing.
@@ -92,7 +92,7 @@ Wide email HTML (600px newsletters) is scaled down to fit the view width.
 var style = RichContentStyle.email
 style.linkColor = UIColor(named: "Accent")!
 style.quoteBarColor = .systemPurple.withAlphaComponent(0.35)
-style.allowsRemoteContent = user.loadsRemoteImages
+style.allowsRemoteContent = user.loadsRemoteImages   // on by default; off blocks tracking pixels
 RichContentView(content).richContentStyle(style)
 ```
 
@@ -180,11 +180,32 @@ Text, Heading 1–3, Bulleted list, Numbered list (1. → a. → i. by level),
 To-do (tap the checkbox), Toggle (tap the arrow; hidden content is kept and
 exported), Quote, Callout (tap the icon to change it; color), Code (language),
 Divider, Image (photo library, paste, or link; remote images load
-asynchronously). Any block can be nested under another (Tab / Shift-Tab, or
+asynchronously), Table (see below). Any block can be nested under another (Tab / Shift-Tab, or
 the indent buttons); children move with their parent.
 
 Inline: bold, italic, underline, strikethrough, inline code, link, and
 Notion's 10 text colors and 10 highlight colors (dark-mode aware).
+
+### Tables
+
+Insert one with the format bar's Table button, `/table`, or the Turn into
+menu (3 × 3 with a header row). Tap a cell and type: every cell is a full
+editor, so all tools work inside it (formats, colors, links, lists, to-dos,
+quotes, code, images, …; no tables inside tables). The format bar follows the
+caret into the cell. Inside a table its Table button becomes a menu: insert
+row above / below, insert column left / right, header row on / off, delete
+row, column or table. Tab / ⇧Tab (hardware keyboard) move between cells; Tab
+in the last cell adds a row. Columns share the width (at least 96 pt each);
+wider tables scroll sideways. Custom bars can use the same API:
+`insertTable(rows:columns:)`, `insertTableRow(below:)`,
+`insertTableColumn(right:)`, `deleteTableRow()`, `deleteTableColumn()`,
+`toggleTableHeaderRow()`, `deleteTable()`, `isInTable`, `tableHasHeaderRow`,
+and `focusedEditor` (the cell's editor while a cell is edited; send formatting
+there).
+
+Imported HTML tables become table blocks when they hold data
+(`<th>`, borders, or `data-type="table"`); layout tables from designed emails
+are flattened into text instead. Markdown pipe tables import too.
 
 ### Ways to edit
 
@@ -194,7 +215,7 @@ Notion's 10 text colors and 10 highlight colors (dark-mode aware).
 | Markdown shortcuts | At the start of a block: `- ` `* ` `+ ` bullets, `1. ` numbers, `[] ` / `[x] ` to-dos, `# ` `## ` `### ` headings, `> ` toggle, `" ` quote, ```` ``` ```` code, `---` divider. Inline: `**bold**`, `*italic*`, `_italic_`, `~strike~`, `` `code` `` (on the closing marker). Undo restores what you typed. |
 | Selection toolbar | Appears under selected text: Turn into, B I U S, code, link, color. |
 | Block handle ⋮⋮ | Beside the current block. Tap: Turn into, Color, Check / Expand, Icon, Language, Indent / Outdent, Move up / down, Duplicate, Delete. Drag: move the block (with its children) anywhere; it takes the level where it lands. |
-| Keyboard toolbar | `+`, Turn into, B I U S, code, link, color, to-do, bullets, numbers, toggle, outdent / indent, image, undo / redo, hide keyboard. |
+| Format bar | `+`, Turn into, B I U S, code, link, color, to-do, bullets, numbers, toggle, outdent / indent, image, table, undo / redo, hide keyboard by default; choose with `toolbarTools` (see "Format bar"). |
 | Hardware keyboard | ⌘B ⌘I ⌘U, ⇧⌘S strike, ⌘E code, ⌘K link, Tab / ⇧Tab, ⇧↩ line break, ⌘↩ check / expand, ⌘D duplicate, ⇧⌘↑ / ↓ move, ⌥⌘0–8 turn into. |
 | VoiceOver | Rotor actions on the current block: check, expand, indent, outdent, move, duplicate, delete. |
 
@@ -220,18 +241,14 @@ config.markdownShortcuts = true
 config.slashCommands = true
 config.loadsRemoteImages = true
 config.commandHint = "Type '/' for commands"
-config.assetColors = [.asset("Brand"), .asset("Accent")]   // your Assets.xcassets colors
 let editor = RichEditorController(style: .email, configuration: config)
 ```
 
-**App colors.** `assetColors` lists named colors from your asset catalog
-(`RichColor.assetBundle`, default `.main`). They appear first and expanded in
-every Color menu (block handle, selection toolbar, keyboard toolbar) and in
-the `/` menu; the built-in palette sits in collapsed "Text colors" /
-"Background colors" sections. Asset colors keep their light / dark variants;
-as highlights they're used as a light tint. iOS can't list an asset catalog
-at runtime, so name the colors you want offered. They export as
-`data-color="asset:Brand"` with the light-mode hex as the inline style.
+**Colors.** Every Color menu (block handle, selection toolbar, format bar)
+has two expanded sections, "Text colors" and "Background colors", each
+starting with "Choose from color picker…" followed by the 10 built-in colors
+(dark-mode aware). Picked colors are stored as hex (`RichColor.custom(_:)`)
+and export as `data-color="hex:#RRGGBB"` with an inline style.
 
 ### Formats
 
@@ -240,16 +257,99 @@ HTML is the lossless format: to-dos are `<ul data-type="todo">` with
 colors `<span data-color>` / `data-highlight` with inline styles, nesting
 inside `<li>` or `<div data-type="indent">`. It renders sensibly in mail
 clients and in `RichContentView`. Markdown keeps structure but not colors,
-callout styling or toggle state (toggles become list items).
+callout styling or toggle state (toggles become list items). Tables export
+as `<table data-type="table">` (`<th>` for the header row, any blocks in
+cells), as Markdown pipe tables (line breaks as `<br>`), and as
+tab-separated rows in plain text.
 `replyHTML(quoting:attribution:)` builds an email reply around the original.
+
+### Replying with the original below
+
+Like Mail and Gmail, the editor can show the message being replied to under
+the reply: rendered like `RichContentView` (designed emails in the web view),
+behind a quote bar, scrolling with the text, and read-only (the caret never
+enters it). `replyHTML()` sends the reply with it quoted.
+
+```swift
+editor.quotedOriginal = QuotedOriginal(.auto(email.body),
+                                       attribution: "On Oct 28, 2026 at 9:41 AM, Alex Kim wrote:")
+send(editor.replyHTML())   // reply + attribution + <blockquote type="cite">original</blockquote>
+editor.quotedOriginal = nil   // remove it
+```
 
 The editor's HTML import is its own parser (no WebKit), so loading is fast
 and works off-screen and in previews.
 
+### Format bar
+
+`.richEditorToolbar(editor)` shows every tool by default. To show only some,
+list them (in the order to show them) from the `RichEditorTool` presets;
+separators are added between groups:
+
+```swift
+config.toolbarTools = [.bold, .italic, .underline, .link, .color,
+                       .bulletList, .numberedList, .image, .undo, .redo, .hideKeyboard]
+// or per bar:
+.richEditorToolbar(editor, tools: .basic)   // or .all (the default)
+```
+
+Icons and names can be replaced per tool (names are what VoiceOver reads and
+the long-press tooltip shows; images are tinted like the built-in icons):
+
+```swift
+config.toolbarIcons = [.bold: .system("bold.underline"),
+                       .image: .asset("AttachPhoto"),             // your asset catalog
+                       .link: .image(UIImage(named: "Link")!)]
+config.toolbarLabels = [.bold: "Fett", .italic: "Kursiv"]
+```
+
+Tools: `addBlock`, `turnInto`, `bold`, `italic`, `underline`, `strikethrough`,
+`code`, `link`, `color`, `todo`, `bulletList`, `numberedList`, `toggle`,
+`outdent`, `indent`, `image`, `table`, `undo`, `redo`, `hideKeyboard`. Tools
+the configuration rules out (Image / Table without `.image` / `.table` in
+`allowedBlocks`, `addBlock` without `slashCommands`) stay hidden.
+
+### Image uploads
+
+Picked and pasted images are scaled to `maxImagePixelSize` and shown at once.
+Without an `imageUploader` they stay embedded as `data:` URLs. With one, the
+image shows "Uploading…" until your closure returns its URL, which replaces
+the embedded data in `html` / `replyHTML()`.
+
+If an upload fails, the image is badged "Upload failed" and an alert offers
+**Retry** and **Remove Image** (tapping the badge later asks again). Gate
+sending on `allImagesUploaded`, which is `false` while any image in the
+document is uploading or failed:
+
+```swift
+editor.imageUploader = { image in try await api.upload(image) }
+editor.onImageUploadFailure = { error in log(error) }    // optional
+// editor.configuration.showsImageUploadFailureAlert = false   // to show your own UI
+
+Button("Send") { send(editor.replyHTML()) }
+    .disabled(editor.isEmpty || !editor.allImagesUploaded)
+
+editor.pendingImageUploads        // uploading now
+editor.failedImageUploads         // waiting for Retry / Remove
+editor.retryFailedImageUploads()
+editor.removeFailedImages()
+```
+
+Deleting an uploading or failed image unblocks sending.
+
+## Claude Code skill
+
+`.claude/skills/richcontent/` teaches Claude Code how to use this package:
+which view to pick, styling, the editor, replies, image uploads and common
+pitfalls, with an API reference and recipes for SwiftUI and UIKit. It loads
+automatically in this repo. To use it in an app that depends on RichContent,
+copy the folder into that app's `.claude/skills/` (or `~/.claude/skills/` for
+all projects).
+
 ## Not covered yet
 
 - Reference-style Markdown images (`![alt][ref]`) show their alt text only.
-- Editor: tables, mentions / dates, synced blocks, columns, page links,
+- Editor: merged table cells and column widths, mentions / dates, synced blocks, columns, page links,
   toggle headings, image captions / resizing, and code syntax highlighting.
 - `cid:` inline attachment images: map them to `data:` URLs before passing the HTML.
 - Text selection across a native block and a web block.

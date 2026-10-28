@@ -1,21 +1,22 @@
 import SwiftUI
 import RichContent
 
-/// Email reply: the editor with the email preset, the original below, and
-/// the HTML that would be sent.
+/// Email reply: the editor with the email preset and the quoted original
+/// inside it (read-only, like Mail and Gmail), and the HTML that would be sent.
 struct ComposeView: View {
     @StateObject private var editor: RichEditorController = {
         var config = RichEditorConfiguration.email
-        config.assetColors = DemoStyle.brandColors
-        return RichEditorController(style: .email, configuration: config)
+        // Every tool (the default); list some, e.g. [.bold, .italic, .link], or use .basic.
+        config.toolbarTools = .all
+        let editor = RichEditorController(style: .email, configuration: config)
+        editor.quotedOriginal = QuotedOriginal(.html(DemoSamples.originalEmail),
+                                               attribution: "On Oct 28, 2026 at 9:41 AM, Alex Kim <alex@example.com> wrote:")
+        editor.imageUploader = DemoUploader.upload
+        return editor
     }()
     @State private var to = "alex@example.com"
     @State private var subject = "Re: Launch plan"
-    @State private var showsQuoted = false
     @State private var sentHTML: String?
-
-    private let original: RichContent = .html(DemoSamples.originalEmail)
-    private let attribution = "On Oct 28, 2026 at 9:41 AM, Alex Kim <alex@example.com> wrote:"
 
     var body: some View {
         NavigationStack {
@@ -28,35 +29,18 @@ struct ComposeView: View {
                 }
                 .padding(.horizontal, 16)
 
+                // The quoted original scrolls with the reply and can't be edited.
                 RichContentEditor(controller: editor, placeholder: "Write your reply…")
-
-                VStack(spacing: 0) {
-                    Button {
-                        withAnimation(.snappy) { showsQuoted.toggle() }
-                    } label: {
-                        Label(showsQuoted ? "Hide original" : "Show original", systemImage: "text.quote")
-                            .font(.footnote.weight(.medium))
-                    }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.capsule)
-                    .padding(.vertical, 8)
-
-                    if showsQuoted {
-                        ScrollView { RichContentView(original) }
-                            .frame(maxHeight: 240)
-                            .background(Color(.secondarySystemBackground))
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-                }
             }
             .navigationTitle("Reply")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Send", systemImage: "paperplane.fill") {
-                        sentHTML = editor.replyHTML(quoting: original, attribution: attribution)
+                        sentHTML = editor.replyHTML()
                     }
-                    .disabled(editor.isEmpty)
+                    // Not while a photo is uploading or has a failed upload.
+                    .disabled(editor.isEmpty || !editor.allImagesUploaded)
                 }
             }
             .richContentStyle(.email)
@@ -124,5 +108,26 @@ private struct SentMailView: View {
                 }
             }
         }
+    }
+}
+
+/// Stand-in for a real upload: takes 2 s and fails every other attempt, so
+/// "Uploading…", the Retry / Remove alert and the disabled Send button can be
+/// tried. "Uploaded" photos are saved to a temporary file.
+enum DemoUploader {
+    struct Failure: LocalizedError {
+        var errorDescription: String? { "The demo server rejected every other upload." }
+    }
+
+    @MainActor private static var attempts = 0
+
+    @MainActor static func upload(_ image: UIImage) async throws -> URL {
+        attempts += 1
+        let fails = attempts.isMultiple(of: 2) == false
+        try await Task.sleep(nanoseconds: 2_000_000_000)
+        if fails { throw Failure() }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
+        try image.jpegData(compressionQuality: 0.85)?.write(to: url)
+        return url
     }
 }

@@ -16,8 +16,7 @@ enum EditorMenus {
     }
 
     /// Two expanded sections, Text colors and Background colors, each with
-    /// "Choose from color picker…", then the app's asset colors, then the
-    /// built-in palette.
+    /// "Choose from color picker…", then the built-in palette.
     static func color(_ controller: RichEditorController, wholeBlock: Bool) -> UIMenu {
         func text(_ color: RichColor) -> UIAction {
             UIAction(title: color.title, image: swatch(color, background: false),
@@ -37,11 +36,16 @@ enum EditorMenus {
                 controller.presentColorPicker(background: background, wholeBlock: wholeBlock)
             }
         }
-        let colors = controller.configuration.assetColors + RichColor.allCases
-        return UIMenu(title: "Color", image: UIImage(systemName: "paintpalette"), children: [
-            UIMenu(title: "Text colors", options: .displayInline, children: [picker(background: false)] + colors.map(text)),
-            UIMenu(title: "Background colors", options: .displayInline, children: [picker(background: true)] + colors.map(background))
-        ])
+        // Flat inline groups, separated: the titled picker group heads each
+        // section, then the built-in palette. (Nested inline menus would drop
+        // the section titles.)
+        func section(_ title: String, background isBackground: Bool, _ item: (RichColor) -> UIAction) -> [UIMenu] {
+            [UIMenu(title: title, options: .displayInline, children: [picker(background: isBackground)]),
+             UIMenu(options: .displayInline, children: RichColor.allCases.map(item))]
+        }
+        return UIMenu(title: "Color", image: UIImage(systemName: "paintpalette"),
+                      children: section("Text colors", background: false, text)
+                        + section("Background colors", background: true, background))
     }
 
     /// "A" in the color, or a filled square for backgrounds.

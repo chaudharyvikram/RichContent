@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 import PhotosUI
 
@@ -28,6 +29,12 @@ public final class RichEditorTextView: UITextView {
     private var autoScrollLink: CADisplayLink?
     private var autoScrollSpeed: CGFloat = 0
 
+    /// The read-only quoted original below the text (see `EditorQuotedOriginal.swift`).
+    var quotedHost: UIHostingController<EditorQuotedOriginalView>?
+    var quotedHeight: CGFloat = 0
+    /// The part of `contentInset.bottom` this view added for the quoted original.
+    var appliedQuotedInset: CGFloat = 0
+
     public var placeholder: String {
         get { placeholderLabel.text ?? "" }
         set { placeholderLabel.text = newValue; updatePlaceholder() }
@@ -37,16 +44,44 @@ public final class RichEditorTextView: UITextView {
     public var minimumHeight: CGFloat = 120
 
     /// Width the block handle needs left of a block's text.
-    private let handleWidth: CGFloat = 28
+    private let handleWidth: CGFloat = RichEditorTextView.handleWidth
+    static let handleWidth: CGFloat = 28
 
     /// Left and right margin: `editorHorizontalPadding` when set, else the
     /// style's padding, widened (on both sides, so blocks stay centred) when
     /// the block handle needs room.
     private func sideInset(_ style: RichContentStyle) -> CGFloat {
+        Self.sideInset(for: style, showsHandles: editorController?.configuration.showsBlockHandles ?? true)
+    }
+
+    static func sideInset(for style: RichContentStyle, showsHandles: Bool) -> CGFloat {
         if let padding = style.editorHorizontalPadding { return max(padding, 0) }
-        let showsHandles = editorController?.configuration.showsBlockHandles ?? true
         return showsHandles ? max(style.horizontalPadding, handleWidth + 2) : style.horizontalPadding
     }
+
+    // Growing with its content (inside a host scroll view), the "/" menu and
+    // the selection toolbar may extend past the bottom edge: don't clip them.
+    public override var isScrollEnabled: Bool {
+        didSet { clipsToBounds = isScrollEnabled }
+    }
+
+    /// Text insets used instead of the style's (table cells).
+    var fixedInsets: UIEdgeInsets?
+    /// Undo history of its own instead of the window's (table cells).
+    var ownUndoManager: UndoManager?
+    public override var undoManager: UndoManager? { ownUndoManager ?? super.undoManager }
+    /// Table blocks and their characters; `nil` until scanned after a change.
+    var tableRanges: [(RichTableAttachment, NSRange)]?
+    /// The in-place editor laid over each table block.
+    var tableViews: [ObjectIdentifier: EditorTableView] = [:]
+
+    /// `false` when the host shows the quoted original itself (SwiftUI's
+    /// `RichContentEditor` stacks it below a non-scrolling editor).
+    var showsQuotedOriginal = true
+
+    /// Non-scrolling editor: called when the height its text needs changes.
+    var onContentHeightChange: ((CGFloat) -> Void)?
+    private var reportedContentHeight: CGFloat = 0
 
     public init() {
         let (storage, layoutManager, container) = TextKitStack.make(EditorLayoutManager())
@@ -86,6 +121,9 @@ public final class RichEditorTextView: UITextView {
         markerTap = UITapGestureRecognizer(target: self, action: #selector(handleMarkerTap(_:)))
         addGestureRecognizer(markerTap)
 
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardDidShow),
+                                               name: UIResponder.keyboardDidShowNotification, object: nil)
+
         layoutManager.focus = { [weak self] in self?.focusInfo() }
         layoutManager.trailingLineInfo = { [weak self] in self?.editorController?.trailingInfo ?? BlockInfo() }
     }
@@ -97,8 +135,8 @@ public final class RichEditorTextView: UITextView {
 
     func apply(_ style: RichContentStyle) {
         let side = sideInset(style)
-        textContainerInset = UIEdgeInsets(top: max(style.verticalPadding, 8), left: side,
-                                          bottom: max(style.verticalPadding, 8) + 8, right: side)
+        textContainerInset = fixedInsets ?? UIEdgeInsets(top: max(style.verticalPadding, 8), left: side,
+                                                         bottom: max(style.verticalPadding, 8) + 8, right: side)
         editorLayoutManager.style = style
         editorLayoutManager.accentColor = style.linkColor
         editorLayoutManager.commandHint = editorController?.configuration.commandHint ?? ""
@@ -136,7 +174,41 @@ public final class RichEditorTextView: UITextView {
         let width = bounds.width - inset.left - inset.right
         let size = placeholderLabel.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
         placeholderLabel.frame = CGRect(x: inset.left, y: inset.top, width: width, height: size.height)
+        layoutQuotedOriginal()
+        layoutTables()
+        reportContentHeight()
         updateOverlays()
+    }
+
+    // MARK: Growing inside the host's scroll view
+
+    /// Tells `onContentHeightChange` the height the text needs at the current width.
+    func reportContentHeight() {
+        guard !isScrollEnabled, let report = onContentHeightChange, bounds.width > 0 else { return }
+        let height = ceil(sizeThatFits(CGSize(width: bounds.width, height: .greatestFiniteMagnitude)).height)
+        guard abs(height - reportedContentHeight) > 0.5 else { return }
+        reportedContentHeight = height
+        DispatchQueue.main.async { report(height) }   // not during a SwiftUI update
+    }
+
+    /// Non-scrolling editor: scrolls the enclosing scroll view just enough to
+    /// show the caret (never to the end of the document).
+    func revealCaretInEnclosingScrollView() {
+        guard !isScrollEnabled, isFirstResponder, let caret = selectedTextRange?.end else { return }
+        // Every scrolling ancestor, innermost first: a wide table's own
+        // scroll view (sideways), then the document (up / down).
+        let caretRect = caretRect(for: caret).insetBy(dx: -4, dy: -12)
+        var view = superview
+        while let candidate = view {
+            if let scrollView = candidate as? UIScrollView, scrollView.isScrollEnabled {
+                scrollView.scrollRectToVisible(convert(caretRect, to: scrollView), animated: false)
+            }
+            view = candidate.superview
+        }
+    }
+
+    @objc private func keyboardDidShow() {
+        revealCaretInEnclosingScrollView()
     }
 
     private func focusInfo() -> EditorLayoutManager.Focus? {
@@ -278,20 +350,69 @@ public final class RichEditorTextView: UITextView {
         return (start, controller.info(ofParagraphAt: start))
     }
 
+    // With a quoted original below the text, UIKit's own scrolling (on focus,
+    // keyboard, Return, typing on the last line) scrolls to the end of the
+    // scrollable area, i.e. past the whole quoted original. Programmatic
+    // scrolls are capped to what keeps the caret visible; the user's own
+    // drags and flicks are left alone.
+    public override var contentOffset: CGPoint {
+        get { super.contentOffset }
+        set { super.contentOffset = limitingAutoScroll(newValue) }
+    }
+
+    public override func setContentOffset(_ contentOffset: CGPoint, animated: Bool) {
+        super.setContentOffset(limitingAutoScroll(contentOffset), animated: animated)
+    }
+
+    private func limitingAutoScroll(_ target: CGPoint) -> CGPoint {
+        guard appliedQuotedInset > 0, isFirstResponder, drag == nil, !isTracking, !isDragging, !isDecelerating,
+              target.y > super.contentOffset.y, let caret = selectedTextRange?.end else { return target }
+        // Only the keyboard / safe area hides content; the quoted original's inset doesn't.
+        let hiddenBottom = max(adjustedContentInset.bottom - appliedQuotedInset, 0)
+        let caretBottom = caretRect(for: caret).maxY + textContainerInset.bottom
+        let needed = caretBottom - bounds.height + hiddenBottom
+        let limit = max(super.contentOffset.y, needed)
+        return CGPoint(x: target.x, y: min(target.y, limit))
+    }
+
+    // The quoted original sits in `contentInset`, which UITextView's own
+    // sizing ignores; count it when the view grows with its content.
+    public override func sizeThatFits(_ size: CGSize) -> CGSize {
+        var fitting = super.sizeThatFits(size)
+        fitting.height += quotedReservedHeight
+        return fitting
+    }
+
+    public override var intrinsicContentSize: CGSize {
+        var size = super.intrinsicContentSize
+        if !isScrollEnabled, size.height != UIView.noIntrinsicMetric { size.height += quotedReservedHeight }
+        return size
+    }
+
     public override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         let point = gestureRecognizer.location(in: self)
-        if gestureRecognizer === markerTap { return markerHit(at: point) != nil }
+        // The quoted original is read-only: no caret or selection there, only scrolling.
+        if isQuotedOriginalTouch(gestureRecognizer) { return false }
+        // Tables are edited by their cell editors, not by this text view.
+        if gestureRecognizer !== panGestureRecognizer, tableView(at: point) != nil { return false }
+        if gestureRecognizer === markerTap { return markerHit(at: point) != nil || failedUploadImage(at: point) != nil }
         // Touches on the menus / handle belong to them, not to text selection.
         for overlay in [slashMenu, selectionToolbar, blockHandle] as [UIView]
         where !overlay.isHidden && overlay.frame.insetBy(dx: -6, dy: -6).contains(point) && gestureRecognizer.view === self {
             return false
         }
         // Don't move the caret / start selection when a marker is tapped.
-        if gestureRecognizer is UITapGestureRecognizer, markerHit(at: point) != nil { return false }
+        if gestureRecognizer is UITapGestureRecognizer, markerHit(at: point) != nil || failedUploadImage(at: point) != nil {
+            return false
+        }
         return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
 
     @objc private func handleMarkerTap(_ recognizer: UITapGestureRecognizer) {
+        if let failed = failedUploadImage(at: recognizer.location(in: self)) {
+            presentImageUploadFailure(source: failed.source)
+            return
+        }
         guard let controller = editorController, let hit = markerHit(at: recognizer.location(in: self)) else { return }
         UISelectionFeedbackGenerator().selectionChanged()
         switch hit.info.type {
@@ -445,9 +566,13 @@ public final class RichEditorTextView: UITextView {
     @objc private func slashEscape() { editorController?.cancelSlashCommand() }
     @objc private func tabKey() {
         guard let controller = editorController else { return }
-        if controller.blockType == .codeBlock { insertText("    ") } else { controller.indent() }
+        if controller.blockType == .codeBlock { insertText("    ") }
+        else if !controller.moveToAdjacentCell(forward: true) { controller.indent() }
     }
-    @objc private func shiftTabKey() { editorController?.outdent() }
+    @objc private func shiftTabKey() {
+        guard let controller = editorController, !controller.moveToAdjacentCell(forward: false) else { return }
+        controller.outdent()
+    }
     @objc private func lineBreakKey() { editorController?.insertLineBreak() }
     @objc private func commandReturn() {
         guard let controller = editorController else { return }

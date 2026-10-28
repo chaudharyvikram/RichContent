@@ -19,8 +19,8 @@ xcodebuild -project Demo/RichContentDemo.xcodeproj -scheme RichContentDemo -dest
 
 | Tab | Shows |
 |---|---|
-| **Notes** | A small notes app. Notes are saved as the editor's HTML (in Documents/notes.json) as you type, and reopen exactly as you left them. The **Welcome** note is a guided tour; **Weekly sync** is a realistic meeting note; the third was imported from Markdown. ⚙︎ toggles editor options and allowed blocks live; Export shows the HTML / Markdown / plain text and a rendered preview. "…" → Restore Sample Notes resets everything. |
-| **Compose** | An email reply using `RichEditorConfiguration.email` (no toggles / callouts). Send shows the reply built with `replyHTML(quoting:attribution:)`, rendered and as HTML source. |
+| **Notes** | A small notes app. Notes are saved as the editor's HTML (in Documents/notes.json) as you type, and reopen exactly as you left them. The **Welcome** note is a guided tour; **Weekly sync** is a realistic meeting note; the last was imported from Markdown. ⚙︎ toggles editor options and allowed blocks live; Export shows the HTML / Markdown / plain text and a rendered preview. "…" → Restore Sample Notes resets everything. |
+| **Compose** | An email reply using `RichEditorConfiguration.email` (no toggles / callouts). The original is quoted inside the editor (read-only, scrolls with the reply); Send shows `replyHTML()`, rendered and as HTML source. |
 | **Viewer** | `RichContentView` on plain-text quoting, an HTML email, a table newsletter (web view), Markdown, the editor's own output, and one string mixing HTML, Markdown and plain text. |
 
 ## Things to try in the editor
@@ -33,3 +33,11 @@ xcodebuild -project Demo/RichContentDemo.xcodeproj -scheme RichContentDemo -dest
 - Tap the ⋮⋮ handle beside the current block for its menu; drag it to move the block.
 - Paste from Safari, Notes or Google Docs; paste a URL over selected text.
 - Use the 📷 button or `/image` for photos, `/image from link` for a URL.
+
+## Your own content
+
+Put your own HTML / Markdown files (emails, API responses, as received) in
+`Demo/RichContentDemo/LocalContent/`. Each file becomes a note and a Viewer
+sample titled with its file name, passed unchanged to `.auto`. Git ignores
+the folder's files, so they stay on your machine; see
+[`LocalContent/README.md`](RichContentDemo/LocalContent/README.md).

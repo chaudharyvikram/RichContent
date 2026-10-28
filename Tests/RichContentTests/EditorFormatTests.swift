@@ -14,8 +14,16 @@ final class EditorFormatTests: XCTestCase {
             if let c = b.info.color, b.info.type == .callout { flags.append(c.rawValue) }
             if let l = b.info.language { flags.append(l) }
             if b.hiddenChildren != nil { flags.append("closed") }
+            if b.table?.hasHeaderRow == true { flags.append("header") }
             let flagText = flags.isEmpty ? "" : "[" + flags.joined(separator: ",") + "]"
-            let text = b.image.map { "img:\($0.source)|\($0.alt)" } ?? b.text.replacingOccurrences(of: "\u{2028}", with: "⏎")
+            var text = b.image.map { "img:\($0.source)|\($0.alt)" } ?? b.text.replacingOccurrences(of: "\u{2028}", with: "⏎")
+            if let table = b.table {
+                // "a|b / c|d": rows by " / ", cells by "|", lines in a cell by "⏎".
+                text = table.rows.map { row in
+                    row.map { RichEditorSerializer.plainText(blocks: $0).replacingOccurrences(of: "\n", with: "⏎") }
+                        .joined(separator: "|")
+                }.joined(separator: " / ")
+            }
             return ["\(indent)\(b.info.type.rawValue)@\(b.info.level)\(flagText): \(text)"]
                 + describe(b.hiddenChildren ?? [], indent: indent + "  ")
         }
@@ -110,22 +118,94 @@ final class EditorFormatTests: XCTestCase {
         XCTAssertEqual(Self.describe(EditorDocument.blocks(from: storage)), Self.describe(sampleDocument))
     }
 
-    func testAssetColorsRoundTrip() {
-        let brand = RichColor.asset("BrandIndigo")
-        XCTAssertEqual(brand.title, "Brand Indigo")
-        XCTAssertEqual(RichColor.asset("brand_accent").title, "brand accent")
-        XCTAssertEqual(RichColor(rawValue: "asset:BrandIndigo"), brand)
+    func testLegacyAssetColorsImportAsCustomColors() {
+        XCTAssertNil(RichColor(rawValue: "asset:BrandIndigo"), "asset colors were removed")
         XCTAssertNil(RichColor(rawValue: "notacolor"))
         XCTAssertEqual(RichColor(rawValue: "red"), .red)
 
-        let text = NSMutableAttributedString(string: "plain ")
-        text.append(inline("brand") { $0.color = brand; $0.highlight = .asset("Coral") })
-        let exported = RichEditorSerializer.html(blocks: [EditorBlock(.paragraph, content: text)])
-        XCTAssertTrue(exported.contains(#"data-color="asset:BrandIndigo""#), exported)
-        let parsed = EditorHTMLParser.blocks(fromHTML: exported)[0].content
-        let info = InlineInfo(parsed.attributes(at: parsed.length - 1, effectiveRange: nil))
-        XCTAssertEqual(info.color, brand)
-        XCTAssertEqual(info.highlight, .asset("Coral"))
+        // Notes saved while asset colors existed keep their exported hex.
+        let html = #"<p><span data-color="asset:BrandIndigo" style="color:#5856D6">brand</span> "#
+            + #"<span data-highlight="asset:Coral" style="background-color:#ffd8cc">tint</span></p>"#
+        let parsed = EditorHTMLParser.blocks(fromHTML: html)[0].content
+        XCTAssertEqual(InlineInfo(parsed.attributes(at: 0, effectiveRange: nil)).color, RichColor(rawValue: "hex:#5856D6"))
+        XCTAssertEqual(InlineInfo(parsed.attributes(at: parsed.length - 1, effectiveRange: nil)).highlight,
+                       RichColor(rawValue: "hex:#FFD8CC"))
+    }
+
+    func testToolbarShowsEveryToolByDefault() {
+        XCTAssertEqual(RichEditorConfiguration().toolbarTools, RichEditorTool.allCases)
+        XCTAssertEqual(RichEditorTool.allCases.last, .hideKeyboard)
+        XCTAssertEqual(RichEditorTool.allCases.compactMap(\.inlineFormat), [.bold, .italic, .underline, .strikethrough, .code])
+        XCTAssertEqual(RichEditorTool.bold.defaultIcon, .system("bold"))
+        XCTAssertEqual(RichEditorTool.bulletList.defaultLabel, "Bulleted list")
+        XCTAssertEqual(RichEditorTool.hideKeyboard.defaultIcon, .system("keyboard.chevron.compact.down"))
+        XCTAssertTrue(RichEditorConfiguration().toolbarIcons.isEmpty && RichEditorConfiguration().toolbarLabels.isEmpty)
+    }
+
+    func testHiddenEmailPartsAreNotImported() {
+        XCTAssertEqual(html("""
+        <body><div style="display: none">Preheader \u{2007}\u{034F} \u{2007}\u{034F}<div>nested</div></div>
+        <div style="display:none; max-height:0; overflow:hidden;">Preheader again</div>
+        <p style="margin: 0;">Hi there</p><span hidden>secret</span>
+        <img src="https://t.example/o.gif" style="width: 1px !important; display: none !important;" alt="">
+        <p style="color:#000;display:block">Bye</p></body>
+        """), ["paragraph@1: Hi there", "paragraph@1: Bye"])
+    }
+
+    // MARK: Tables
+
+    private var sampleTable: EditorBlock {
+        var table = EditorTable.empty(rows: 2, columns: 2)
+        table.rows[0][0] = [EditorBlock(.paragraph, text: "Name")]
+        table.rows[0][1] = [EditorBlock(.paragraph, text: "Qty")]
+        table.rows[1][0] = [EditorBlock(.paragraph, content: inline("Pen") { $0.bold = true })]
+        table.rows[1][1] = [EditorBlock(.bulletList, text: "a"), EditorBlock(.bulletList, text: "b")]
+        var block = EditorBlock(.table)
+        block.table = table
+        return block
+    }
+
+    func testDataTablesImportAsTableBlocks() {
+        let blocks = EditorHTMLParser.blocks(fromHTML: """
+        <table><thead><tr><th>Name</th><th>Qty</th></tr></thead>
+        <tbody><tr><td><b>Pen</b></td><td><ul><li>a</li><li>b</li></ul></td></tr></tbody></table>
+        """)
+        XCTAssertEqual(Self.describe(blocks), ["table@1[header]: Name|Qty / Pen|• a⏎• b"])
+        let pen = blocks[0].table!.rows[1][0][0].content
+        XCTAssertTrue(InlineInfo(pen.attributes(at: 0, effectiveRange: nil)).bold, "formats inside cells are kept")
+    }
+
+    func testLayoutTablesStayFlattened() {
+        XCTAssertEqual(html(#"<table role="presentation"><tr><td>Hi</td><td>there</td></tr></table>"#),
+                       ["paragraph@1: Hi\tthere"])
+        XCTAssertFalse(html("<table border=\"1\"><tr><td><table><tr><td>Nested</td></tr></table></td><td>x</td></tr></table>")
+            .contains { $0.hasPrefix("table@") }, "tables holding tables are layout")
+        XCTAssertFalse(html("<table width=\"600\"><tr><td>Layout</td><td>cell</td></tr></table>").contains { $0.hasPrefix("table@") },
+                       "no header, no borders: a layout table")
+    }
+
+    func testTableRoundTripsThroughHTML() {
+        let exported = RichEditorSerializer.html(blocks: [sampleTable])
+        XCTAssertTrue(exported.contains(#"<table data-type="table""#), exported)
+        XCTAssertTrue(exported.contains("<th"), exported)
+        let back = EditorHTMLParser.blocks(fromHTML: exported)
+        XCTAssertEqual(Self.describe(back), Self.describe([sampleTable]))
+        XCTAssertTrue(InlineInfo(back[0].table!.rows[1][0][0].content.attributes(at: 0, effectiveRange: nil)).bold)
+    }
+
+    func testTableToAndFromMarkdown() {
+        XCTAssertEqual(RichEditorSerializer.markdown(blocks: [sampleTable]),
+                       "| Name | Qty |\n| --- | --- |\n| **Pen** | - a<br>- b |")
+        XCTAssertEqual(markdown("| Name | Qty |\n| --- | --- |\n| Pen | *2* |"), ["table@1[header]: Name|Qty / Pen|2"])
+        let blocks = EditorImporter.markdownBlocks("Before\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nAfter")
+        XCTAssertEqual(Self.describe(blocks), ["paragraph@1: Before", "table@1[header]: A|B / 1|2", "paragraph@1: After"])
+    }
+
+    func testTableSurvivesTheEditorTextStorage() {
+        let document = [EditorBlock(.paragraph, text: "Before"), sampleTable, EditorBlock(.paragraph, text: "After")]
+        let storage = EditorDocument.attributedString(from: document, style: .standard)
+        XCTAssertEqual(Self.describe(EditorDocument.blocks(from: storage)), Self.describe(document))
+        XCTAssertEqual(RichEditorSerializer.plainText(from: storage), "Before\nName\tQty\nPen\t• a • b\nAfter")
     }
 
     func testCustomColorsRoundTrip() {
@@ -192,8 +272,7 @@ final class EditorFormatTests: XCTestCase {
             "  paragraph@2: Inside",
             "divider@1: ",
             "image@1: img:https://x.com/a.png|A",
-            "paragraph@1: Name\tQty",
-            "paragraph@1: Pen\t2"
+            "table@1[header]: Name|Qty / Pen|2"
         ])
         let first = blocks[0].content
         XCTAssertTrue(InlineInfo(first.attributes(at: 0, effectiveRange: nil)).bold)
@@ -211,6 +290,14 @@ final class EditorFormatTests: XCTestCase {
     func testJSONEscapedHTML() {
         XCTAssertEqual(html(#"<ul><li>One<\/li><li><a href=\"https:\/\/x.com\">Two<\/a><\/li><\/ul>"#),
                        ["bulletList@1: One", "bulletList@1: Two"])
+    }
+
+    func testJSONEscapedEmailWithTrailingNewlineDecodesFully() {
+        // As read from a file / response: CRLF and \u escapes, plus a raw trailing newline.
+        let raw = #"<div style=\"display: none\">Preview  ͏</div>\r\n<p style=\"margin: 0;\">Hi ’ there<\/p>"# + "\n"
+        XCTAssertEqual(JSONEscapedHTML.unescapeIfNeeded(raw),
+                       "<div style=\"display: none\">Preview \u{2007}\u{034F}</div>\r\n<p style=\"margin: 0;\">Hi \u{2019} there</p>")
+        XCTAssertEqual(Self.describe(EditorImporter.blocks(from: .auto(raw))), ["paragraph@1: Hi \u{2019} there"])
     }
 
     // MARK: Markdown

@@ -29,6 +29,8 @@ enum MixedContentSegmenter {
         var inFence = false
         var depth = 0
         var softDepth = 0
+        /// Start of a tag that continues on the next line (`<img src=` ⏎ `"…" >`).
+        var openTag = ""
 
         func flushText() {
             defer { text.removeAll() }
@@ -44,6 +46,7 @@ enum MixedContentSegmenter {
             inHTML = false
             depth = 0
             softDepth = 0
+            openTag = ""
             guard !chunk.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
             parts.append(.html(chunk))
         }
@@ -57,12 +60,15 @@ enum MixedContentSegmenter {
             }
 
             if inHTML {
-                let closed = depth == 0 && (softDepth == 0 || trimmed.isEmpty)
+                let closed = depth == 0 && (softDepth == 0 || trimmed.isEmpty) && openTag.isEmpty
                 if closed, !html.isEmpty, !matches(tagLineStart, trimmed) {
                     flushHTML()           // falls through: this line is text
                 } else {
                     html.append(line)
-                    let delta = tagDepthDelta(line)
+                    // A tag split across lines counts once, when it's complete.
+                    let (complete, unfinished) = splitUnfinishedTag(openTag + "\n" + line)
+                    openTag = unfinished.count > 20_000 ? "" : unfinished   // never swallow everything
+                    let delta = tagDepthDelta(complete)
                     depth = max(0, depth + delta.hard)
                     softDepth = max(0, softDepth + delta.soft)
                     continue
@@ -227,6 +233,33 @@ enum MixedContentSegmenter {
     }
 
     // MARK: - Tag balance
+
+    /// Splits off a trailing tag that hasn't reached its `>` yet (quotes in
+    /// attribute values respected), so it can be completed by the next line.
+    static func splitUnfinishedTag(_ text: String) -> (complete: String, unfinished: String) {
+        var tagStart: String.Index?
+        var quote: Character?
+        var index = text.startIndex
+        while index < text.endIndex {
+            let c = text[index]
+            let next = text.index(after: index)
+            if tagStart != nil {
+                if let q = quote {
+                    if c == q { quote = nil }
+                } else if c == "\"" || c == "'" {
+                    quote = c
+                } else if c == ">" {
+                    tagStart = nil
+                }
+            } else if c == "<", next < text.endIndex,
+                      text[next].isLetter || text[next] == "/" || text[next] == "!" {
+                tagStart = index
+            }
+            index = next
+        }
+        guard let start = tagStart else { return (text, "") }
+        return (String(text[..<start]), String(text[start...]))
+    }
 
     /// +1 per opening tag, −1 per closing tag; void and self-closing elements
     /// are ignored. Optional-close elements (`<p>`, `<li>`, `<td>` …) are

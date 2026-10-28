@@ -68,4 +68,26 @@ final class MixedContentSegmenterTests: XCTestCase {
         let content = RichContent.markdown("Intro\n<b>Note:</b> ship it\n- item")
         XCTAssertEqual(content.flattened, [.markdown("Intro\n<b>Note:</b> ship it\n- item")])
     }
+
+    func testTagSplitAcrossLinesStaysHTML() {
+        // A tracking pixel at the end of an email, its src on the next line.
+        let email = "<table><tr><td>Hi</td></tr></table>\r\n<img alt=\"\" src=\r\n\"https://t.example.com/o/ODU1=\" >\r\n"
+        let parts = MixedContentSegmenter.segments(of: email)
+        XCTAssertEqual(parts.count, 1)
+        guard case .html(let html)? = parts.first else { return XCTFail("\(parts)") }
+        XCTAssertTrue(html.contains("ODU1="))
+
+        // A multi-line opening tag still counts for nesting.
+        let nested = "<div\n class=\"card\">\nInside\n\nStill inside\n</div>\n\nAfter"
+        let split = MixedContentSegmenter.segments(of: nested)
+        guard case .html(let block)? = split.first else { return XCTFail("\(split)") }
+        XCTAssertTrue(block.contains("Still inside"))
+        XCTAssertEqual(split.count, 2)
+    }
+
+    func testUnfinishedTagSplit() {
+        XCTAssertEqual(MixedContentSegmenter.splitUnfinishedTag("<p>ok</p><img src=").unfinished, "<img src=")
+        XCTAssertEqual(MixedContentSegmenter.splitUnfinishedTag("<a title=\"a > b\" href=").unfinished, "<a title=\"a > b\" href=")
+        XCTAssertEqual(MixedContentSegmenter.splitUnfinishedTag("1 < 2 and <b>x</b>").unfinished, "")
+    }
 }

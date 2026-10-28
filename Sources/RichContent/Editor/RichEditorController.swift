@@ -17,12 +17,20 @@ public struct RichEditorConfiguration {
     public var loadsRemoteImages = true
     /// Shown in an empty text block under the caret.
     public var commandHint = "Type '/' for commands"
-    /// App colors from an asset catalog (`.asset("Brand")`), listed first and
-    /// expanded in color menus; the built-in palette sits in collapsed sections.
-    /// iOS can't list an asset catalog at runtime, so name the colors here.
-    public var assetColors: [RichColor] = []
     /// Pasted / picked images are scaled down to this many pixels on the long side.
     public var maxImagePixelSize: CGFloat = 2048
+    /// When an `imageUploader` upload fails, show an alert with Retry and
+    /// Remove Image. The failed image also keeps a badge; tapping it offers
+    /// the same choices.
+    public var showsImageUploadFailureAlert = true
+    /// Buttons in the format bar, in order (all by default). Tools the rest
+    /// of the configuration rules out (e.g. Image without `.image` in
+    /// `allowedBlocks`) are left out.
+    public var toolbarTools: [RichEditorTool] = .all
+    /// Replace a format-bar icon, e.g. `[.bold: .system("bold.underline"), .image: .asset("AttachPhoto")]`.
+    public var toolbarIcons: [RichEditorTool: RichEditorToolIcon] = [:]
+    /// Replace a format-bar tool's name (VoiceOver, long-press tooltip), e.g. for localization.
+    public var toolbarLabels: [RichEditorTool: String] = [:]
 
     public init() {}
 
@@ -59,13 +67,24 @@ public final class RichEditorController: NSObject, ObservableObject {
     @Published public private(set) var isChecked = false
     @Published public private(set) var textColor: RichColor = .default
     @Published public private(set) var highlight: RichColor = .default
-    @Published public private(set) var isFocused = false
+    /// `true` while the caret is in this editor or in one of its table cells.
+    @Published public internal(set) var isFocused = false
+    /// The editor of the table cell being edited, if any (see `focusedEditor`).
+    @Published public internal(set) var activeCellEditor: RichEditorController?
+    /// Set on a table cell's editor: the document's editor and the cell.
+    weak var parentEditor: RichEditorController?
+    weak var tableAttachment: RichTableAttachment?
+    var tableCell: (row: Int, column: Int)?
     @Published public private(set) var isEmpty = true
     @Published public private(set) var hasSelection = false
     @Published public private(set) var canUndo = false
     @Published public private(set) var canRedo = false
     @Published public private(set) var canIndent = false
     @Published public private(set) var canOutdent = false
+    /// Images in the document still uploading with `imageUploader`.
+    @Published public internal(set) var pendingImageUploads = 0
+    /// Images in the document whose upload failed (Retry / Remove pending).
+    @Published public internal(set) var failedImageUploads = 0
 
     public var configuration: RichEditorConfiguration {
         didSet { textView?.configurationDidChange() }
@@ -75,8 +94,16 @@ public final class RichEditorController: NSObject, ObservableObject {
     public var onChange: ((RichEditorController) -> Void)?
 
     /// Uploads a picked / pasted image and returns its URL. Without it,
-    /// images are embedded as `data:` URLs.
+    /// images are embedded as `data:` URLs. While it runs the image shows
+    /// "Uploading…"; check `allImagesUploaded` before sending.
     public var imageUploader: ((UIImage) async throws -> URL)?
+
+    /// Called when an image upload fails (in addition to the alert, see
+    /// `RichEditorConfiguration.showsImageUploadFailureAlert`).
+    public var onImageUploadFailure: ((Error) -> Void)?
+
+    /// Uploads started in this editor, by the image's `data:` source.
+    var imageUploads: [ImageUpload] = []
 
     public private(set) var style: RichContentStyle
     private(set) weak var textView: RichEditorTextView?
@@ -85,10 +112,22 @@ public final class RichEditorController: NSObject, ObservableObject {
     var trailingInfo = BlockInfo()
     /// Range touched by the change in flight, for normalising afterwards.
     var pendingEditRange: NSRange?
+    /// Text replacing a range (suggestion, autocorrect, dictation, typing over
+    /// a selection) keeps the replaced text's formatting: where it lands and
+    /// the inline formats of the first replaced character.
+    var pendingReplacementStyle: (range: NSRange, inline: InlineInfo)?
     var slash: SlashState?
     var slashPending: Int?
-    /// Link taps (from the edit menu's "Open Link"). `nil` opens with the system.
+    /// Link taps (from the edit menu's "Open Link" and the quoted original).
+    /// `nil` opens with the system.
     public var onOpenURL: ((URL) -> Void)?
+
+    /// The message being replied to, shown read-only below the text like the
+    /// quoted original in Mail and Gmail: it scrolls with the reply, can't be
+    /// edited, and `replyHTML()` sends it. `nil` shows nothing.
+    @Published public var quotedOriginal: QuotedOriginal? {
+        didSet { if quotedOriginal != oldValue { textView?.quotedOriginalDidChange() } }
+    }
 
     public init(style: RichContentStyle = .standard, content: RichContent? = nil,
                 configuration: RichEditorConfiguration = .standard) {
@@ -116,6 +155,12 @@ public final class RichEditorController: NSObject, ObservableObject {
     /// Reply HTML: this document, an attribution line and the quoted original.
     public func replyHTML(quoting original: RichContent, attribution: String) -> String {
         RichEditorSerializer.replyHTML(attributedText, quoting: original, attribution: attribution, style: style)
+    }
+
+    /// Reply HTML with `quotedOriginal` (just `html` when there is none).
+    public func replyHTML() -> String {
+        guard let quoted = quotedOriginal else { return html }
+        return replyHTML(quoting: quoted.content, attribution: quoted.attribution)
     }
 
     /// Loads any content the viewer understands (HTML, Markdown, plain, attributed, mixed).
@@ -167,11 +212,19 @@ public final class RichEditorController: NSObject, ObservableObject {
     // MARK: - Attaching
 
     func attach(_ tv: RichEditorTextView, style: RichContentStyle) {
+        // A new text view replacing a live one (SwiftUI switching layouts):
+        // carry the document over.
+        if let old = textView, old !== tv, pendingDocument == nil {
+            pendingDocument = NSAttributedString(attributedString: old.textStorage)
+            old.delegate = nil
+            old.editorController = nil
+        }
         self.style = style
         textView = tv
         tv.delegate = self
         tv.editorController = self
         tv.apply(style)
+        tv.quotedOriginalDidChange()
         if let document = pendingDocument {
             pendingDocument = nil
             tv.textStorage.setAttributedString(restyled(document))
@@ -181,13 +234,26 @@ public final class RichEditorController: NSObject, ObservableObject {
         contentDidChange()
     }
 
+    /// The text view is going away (SwiftUI dismantled it): keep the document
+    /// so `html` still works and a new text view picks it up.
+    func detach(_ tv: RichEditorTextView) {
+        guard textView === tv else { return }
+        pendingDocument = NSAttributedString(attributedString: tv.textStorage)
+        tv.delegate = nil
+        tv.editorController = nil
+        textView = nil
+        isFocused = false
+    }
+
     func updateStyle(_ newStyle: RichContentStyle) {
         guard newStyle != style else { return }
         style = newStyle
         guard let tv = textView else { return }
         tv.apply(newStyle)
+        tv.quotedOriginalDidChange()
         let selection = tv.selectedRange
         EditorStyling.normalize(tv.textStorage, in: NSRange(location: 0, length: tv.textStorage.length), style: newStyle)
+        prepareAttachments(in: NSRange(location: 0, length: tv.textStorage.length))
         tv.selectedRange = selection
         syncTypingAttributes()
         contentDidChange()
@@ -400,6 +466,9 @@ public final class RichEditorController: NSObject, ObservableObject {
             guard let attachment = value as? EditorBlockAttachment else { return }
             attachment.hostView = tv
             (attachment as? RichImageAttachment)?.loadIfNeeded(allowsRemote: configuration.loadsRemoteImages)
+            if let table = attachment as? RichTableAttachment, table.update(style: style) {
+                tv.tableViews[ObjectIdentifier(table)]?.rebuildCells()
+            }
         }
     }
 
@@ -409,7 +478,12 @@ public final class RichEditorController: NSObject, ObservableObject {
         tv.updatePlaceholder()
         tv.redrawDecorations()
         refreshState()
+        updateImageUploadStates()
         tv.updateOverlays()
+        tv.reportContentHeight()
+        tv.revealCaretInEnclosingScrollView()
+        tv.tablesDidChange()
+        parentEditor?.cellContentDidChange(self)
         onChange?(self)
     }
 
@@ -508,11 +582,24 @@ extension RichEditorController: UITextViewDelegate {
         if textView.markedTextRange == nil {
             let range = pendingEditRange ?? NSRange(location: 0, length: s.length)
             let selection = textView.selectedRange
+            if let replacement = pendingReplacementStyle, replacement.range.length > 0,
+               NSMaxRange(replacement.range) <= s.length {
+                // UIKit inserts suggestions with the attributes it picked on the
+                // selection change (from the character before the word).
+                s.enumerateAttributes(in: replacement.range) { attrs, r, _ in
+                    guard attrs[.attachment] == nil, InlineInfo(attrs) != replacement.inline else { return }
+                    s.setAttributes(EditorStyling.attributes(block: BlockInfo(attrs), inline: replacement.inline, style: style),
+                                    range: r)
+                }
+                // The selection change may already have read the unstyled word.
+                syncTypingAttributes()
+            }
             EditorStyling.normalize(s, in: range, style: style)
             prepareAttachments(in: range)
             if textView.selectedRange != selection { textView.selectedRange = selection }
         }
         pendingEditRange = nil
+        pendingReplacementStyle = nil
         updateSlashState()
         contentDidChange()
     }
@@ -529,11 +616,15 @@ extension RichEditorController: UITextViewDelegate {
 
     public func textViewDidBeginEditing(_ textView: UITextView) {
         isFocused = true
+        activeCellEditor = nil
+        parentEditor?.cellDidBeginEditing(self)
         self.textView?.updateOverlays()
     }
 
     public func textViewDidEndEditing(_ textView: UITextView) {
-        isFocused = false
+        // Focus may be moving to a table cell (or back): settle after it lands.
+        DispatchQueue.main.async { [weak self] in self?.refreshFocus() }
+        parentEditor?.cellDidEndEditing(self)
         slash = nil
         self.textView?.redrawDecorations()
         self.textView?.updateOverlays()

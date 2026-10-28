@@ -80,11 +80,22 @@ enum EditorHTMLParser {
 
             let attrs = parseAttributes(match.range(at: 3).location == NSNotFound ? "" : ns.substring(with: match.range(at: 3)))
             let node = Node(name: name, attributes: attrs)
-            append(node)
+            // Hidden elements (email preheaders, tracking pixels) stay out of
+            // the tree; their content still parses, into the detached node.
+            if !isHidden(attrs) { append(node) }
             if !voidElements.contains(name) && !selfClosing { stack.append(node) }
         }
         return root
     }
+
+    private static func isHidden(_ attributes: [String: String]) -> Bool {
+        if attributes["hidden"] != nil { return true }
+        guard let style = attributes["style"] else { return false }
+        return hiddenStyle.firstMatch(in: style, range: NSRange(location: 0, length: (style as NSString).length)) != nil
+    }
+
+    private static let hiddenStyle = try! NSRegularExpression(
+        pattern: #"(?:^|;)\s*(?:display\s*:\s*none|mso-hide\s*:\s*all)\b"#, options: [.caseInsensitive])
 
     private static func parseAttributes(_ source: String) -> [String: String] {
         var result: [String: String] = [:]
@@ -359,6 +370,13 @@ enum EditorHTMLParser {
                 flush()
 
             case "table":
+                if let table = EditorHTMLParser.dataTable(node) {
+                    var block = EditorBlock(.table, level: ctx.level)
+                    block.table = table
+                    appendAttachment(block)
+                    return
+                }
+                // Layout table (designed emails): its text flows as paragraphs.
                 boundary()
                 visitChildren(of: node, ctx)
                 flush()
@@ -483,11 +501,18 @@ enum EditorHTMLParser {
                 if decoration.contains("underline") { ctx.inline.underline = true }
                 if decoration.contains("line-through") { ctx.inline.strike = true }
             }
-            if node["data-color"] == nil, let color = cssValue("color", in: style).flatMap(EditorHTMLParser.paletteColor(css:)) {
+            // A `data-color` the editor no longer knows (e.g. the removed
+            // "asset:" colors) keeps its exported inline hex as a custom color.
+            let knownColor = node["data-color"].flatMap(RichColor.init(rawValue:)) != nil
+            let knownHighlight = node["data-highlight"].flatMap(RichColor.init(rawValue:)) != nil
+            if !knownColor, let css = cssValue("color", in: style),
+               let color = EditorHTMLParser.paletteColor(css: css)
+                ?? (node["data-color"] != nil ? EditorHTMLParser.hexColor(css: css) : nil) {
                 ctx.inline.color = color
             }
-            if node["data-highlight"] == nil,
-               let bg = (cssValue("background-color", in: style) ?? cssValue("background", in: style)).flatMap(EditorHTMLParser.paletteHighlight(css:)) {
+            if !knownHighlight, let css = cssValue("background-color", in: style) ?? cssValue("background", in: style),
+               let bg = EditorHTMLParser.paletteHighlight(css: css)
+                ?? (node["data-highlight"] != nil ? EditorHTMLParser.hexColor(css: css) : nil) {
                 ctx.inline.highlight = bg
             }
             if let family = cssValue("font-family", in: style), family.contains("mono") || family.contains("courier") || family.contains("menlo") {
@@ -533,10 +558,74 @@ enum EditorHTMLParser {
         return nil
     }
 
+    /// `#rgb` / `#rrggbb` as a custom color.
+    static func hexColor(css: String) -> RichColor? {
+        let value = css.trimmingCharacters(in: .whitespaces).lowercased()
+        guard value.hasPrefix("#") else { return nil }
+        return RichColor(rawValue: "hex:#" + expandHex(value).uppercased())
+    }
+
     private static func expandHex(_ hex: String) -> String {
         let digits = hex.dropFirst()
         guard digits.count == 3 else { return String(digits) }
         return digits.map { "\($0)\($0)" }.joined()
+    }
+
+    // MARK: - Tables
+
+    /// A data table as a table block; `nil` for layout tables (designed
+    /// emails: `role="presentation"`, nested tables, no header / borders).
+    static func dataTable(_ node: Node) -> EditorTable? {
+        let rows = tableRows(node)
+        guard !rows.isEmpty else { return nil }
+        let cells = rows.map(tableCells)
+        let columns = cells.map(\.count).max() ?? 0
+        guard columns > 0 else { return nil }
+
+        let ours = node["data-type"]?.lowercased() == "table"
+        if !ours {
+            if node["role"]?.lowercased() == "presentation" || contains(node, "table") { return nil }
+            let hasHeader = cells.contains { $0.contains { $0.name == "th" } }
+            let border = node["border"].map { $0 != "0" && !$0.isEmpty } ?? false
+            let borderStyle = [node["style"]] + cells.flatMap { $0.map { $0["style"] } }
+            let styledBorders = borderStyle.contains { style in
+                guard let style = style?.lowercased() else { return false }
+                return style.range(of: #"border(-(top|bottom|left|right))?\s*:\s*[^;]*(solid|dashed|dotted)"#,
+                                   options: .regularExpression) != nil
+            }
+            guard (hasHeader || border || styledBorders), columns >= 2 || rows.count >= 2 else { return nil }
+        }
+
+        let headerRow = cells.first.map { !$0.isEmpty && $0.allSatisfy { $0.name == "th" } } ?? false
+            || rows.first?.parent?.name == "thead"
+        let content: [[[EditorBlock]]] = cells.map { row in
+            row.map { cell in
+                var builder = Builder()
+                builder.visitChildren(of: cell, Context())
+                builder.flush()
+                return postProcess(builder.blocks)
+            }
+        }
+        return EditorTable(rows: content, hasHeaderRow: headerRow)
+    }
+
+    /// `<tr>`s of a table, directly or in `<thead>` / `<tbody>` / `<tfoot>` (not nested tables).
+    private static func tableRows(_ table: Node) -> [Node] {
+        table.children.flatMap { child -> [Node] in
+            switch child.name {
+            case "tr": return [child]
+            case "thead", "tbody", "tfoot": return child.children.filter { $0.name == "tr" }
+            default: return []
+            }
+        }
+    }
+
+    private static func tableCells(_ row: Node) -> [Node] {
+        row.children.filter { $0.name == "td" || $0.name == "th" }
+    }
+
+    private static func contains(_ node: Node, _ name: String) -> Bool {
+        node.children.contains { $0.name == name || contains($0, name) }
     }
 
     // MARK: - Post-processing

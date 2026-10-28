@@ -95,7 +95,14 @@ enum DemoSamples {
         func hash(into hasher: inout Hasher) { hasher.combine(id) }
     }
 
-    static let viewerSamples: [ViewerSample] = [
+    /// The built-in samples, plus one per file in `LocalContent/`.
+    static var viewerSamples: [ViewerSample] {
+        builtInViewerSamples + LocalSample.all.map {
+            ViewerSample(id: "local-" + $0.fileName, title: $0.title, subtitle: "LocalContent/\($0.fileName)", content: .auto($0.content))
+        }
+    }
+
+    private static let builtInViewerSamples: [ViewerSample] = [
         ViewerSample(id: "plain", title: "Plain-text reply", subtitle: "\"> \" quoting becomes quote bars", content: .plain("""
         Sounds good, see you Thursday.
 

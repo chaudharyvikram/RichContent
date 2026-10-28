@@ -86,6 +86,7 @@ extension RichEditorController {
     public func setBlock(_ type: RichBlockType) {
         guard configuration.allowedBlocks.contains(type) else { return }
         if type == .divider { insertDivider(); return }
+        if type == .table { insertTable(); return }
         if type == .image { textView?.presentImagePicker(); return }
         guard let tv = textView else { return }
 
@@ -317,12 +318,7 @@ extension RichEditorController {
         var block = EditorBlock(.image, level: info(ofParagraphAt: selectedRange.location).level)
         block.image = EditorImage(source: dataURL, alt: alt, size: scaled.size)
         insertAttachmentBlock(block, actionName: "Image")
-
-        guard let uploader = imageUploader else { return }
-        Task { [weak self] in
-            guard let url = try? await uploader(scaled) else { return }
-            await MainActor.run { self?.replaceImageSource(dataURL, with: url.absoluteString) }
-        }
+        startImageUpload(source: dataURL, image: scaled)
     }
 
     /// Inserts an image block that loads from `url`.
@@ -331,14 +327,6 @@ extension RichEditorController {
         var block = EditorBlock(.image, level: info(ofParagraphAt: selectedRange.location).level)
         block.image = EditorImage(source: url.absoluteString, alt: alt)
         insertAttachmentBlock(block, actionName: "Image")
-    }
-
-    private func replaceImageSource(_ old: String, with new: String) {
-        guard let s = storage else { return }
-        s.enumerateAttribute(.attachment, in: NSRange(location: 0, length: s.length)) { value, _, _ in
-            if let image = value as? RichImageAttachment, image.source == old { image.source = new }
-        }
-        onChange?(self)
     }
 
     /// Image / divider: replaces an empty current block, else goes below it.
@@ -570,18 +558,25 @@ extension RichEditorController {
         picker.supportsAlpha = background
         let current = background ? highlight : textColor
         if current != .default { picker.selectedColor = background ? current.backgroundColor : current.textColor }
-        let coordinator = ColorPickerCoordinator(initial: picker.selectedColor) { [weak self, weak tv] color in
-            guard let self, let tv else { return }
-            tv.becomeFirstResponder()
-            tv.selectedRange = range
-            let picked = RichColor.custom(color)
-            if wholeBlock { self.setBlockColor(picked, background: background) }
-            else if background { self.setHighlight(picked) }
-            else { self.setTextColor(picked) }
+        let coordinator = ColorPickerCoordinator(initial: picker.selectedColor) { [weak self] color in
+            self?.applyPickedColor(color, background: background, wholeBlock: wholeBlock, range: range)
         }
         picker.delegate = coordinator
         objc_setAssociatedObject(picker, &ColorPickerCoordinator.key, coordinator, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         presenter.present(picker, animated: true)
+        // Swipe-to-dismiss doesn't call colorPickerViewControllerDidFinish.
+        picker.presentationController?.delegate = coordinator
+    }
+
+    /// Applies a color from the picker to `range` (the selection when the picker opened).
+    func applyPickedColor(_ color: UIColor, background: Bool, wholeBlock: Bool, range: NSRange) {
+        guard let tv = textView else { return }
+        tv.becomeFirstResponder()
+        if NSMaxRange(range) <= tv.textStorage.length { tv.selectedRange = range }
+        let picked = RichColor.custom(color)
+        if wholeBlock { setBlockColor(picked, background: background) }
+        else if background { setHighlight(picked) }
+        else { setTextColor(picked) }
     }
 
     // MARK: - Link editing UI
@@ -641,10 +636,12 @@ extension RichEditorController {
 
 /// Applies the picked color once, when the picker closes (one undo step),
 /// and only if it differs from the color the picker opened with.
-private final class ColorPickerCoordinator: NSObject, UIColorPickerViewControllerDelegate {
+/// Closing with the ✕ button and swiping the sheet down both count.
+final class ColorPickerCoordinator: NSObject, UIColorPickerViewControllerDelegate, UIAdaptivePresentationControllerDelegate {
     static var key = 0
     private let initial: UIColor
     private let apply: (UIColor) -> Void
+    private var finished = false
 
     init(initial: UIColor, apply: @escaping (UIColor) -> Void) {
         self.initial = initial
@@ -652,9 +649,20 @@ private final class ColorPickerCoordinator: NSObject, UIColorPickerViewControlle
     }
 
     func colorPickerViewControllerDidFinish(_ viewController: UIColorPickerViewController) {
-        let color = viewController.selectedColor
+        finish(with: viewController.selectedColor)
+    }
+
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        guard let picker = presentationController.presentedViewController as? UIColorPickerViewController else { return }
+        finish(with: picker.selectedColor)
+    }
+
+    func finish(with color: UIColor) {
+        guard !finished else { return }
+        finished = true
         guard RichColor.custom(color) != RichColor.custom(initial) else { return }
-        apply(color)
+        // Wait for the picker to go away so the text view can take focus back.
+        DispatchQueue.main.async { [apply] in apply(color) }
     }
 }
 

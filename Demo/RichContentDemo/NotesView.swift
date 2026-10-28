@@ -111,14 +111,7 @@ struct NoteEditorView: View {
 }
 
 enum DemoStyle {
-    /// Colors from Assets.xcassets, shown first (expanded) in every color menu.
-    static let brandColors: [RichColor] = ["BrandIndigo", "Coral", "Forest", "Sunflower", "Ocean", "Plum"].map(RichColor.asset)
-
-    static var editorConfiguration: RichEditorConfiguration {
-        var config = RichEditorConfiguration()
-        config.assetColors = brandColors
-        return config
-    }
+    static var editorConfiguration: RichEditorConfiguration { RichEditorConfiguration() }
 
     static var notes: RichContentStyle {
         var style = RichContentStyle.standard

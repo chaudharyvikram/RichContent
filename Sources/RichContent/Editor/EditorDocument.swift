@@ -9,6 +9,7 @@ struct EditorBlock {
     /// Line breaks inside a block are U+2028.
     var content: NSAttributedString
     var image: EditorImage?
+    var table: EditorTable?
     /// Collapsed toggle: the hidden child blocks (absolute levels).
     var hiddenChildren: [EditorBlock]?
 
@@ -50,6 +51,10 @@ enum EditorDocument {
                 let image = block.image ?? EditorImage(source: "")
                 var a = EditorStyling.attributes(block: info, inline: InlineInfo(), style: style)
                 a[.attachment] = RichImageAttachment(source: image.source, alt: image.alt, size: image.size)
+                piece.append(NSAttributedString(string: EditorStyling.attachmentCharacter, attributes: a))
+            case .table:
+                var a = EditorStyling.attributes(block: info, inline: InlineInfo(), style: style)
+                a[.attachment] = RichTableAttachment(table: block.table ?? .empty(), style: style)
                 piece.append(NSAttributedString(string: EditorStyling.attachmentCharacter, attributes: a))
             case .divider:
                 var a = EditorStyling.attributes(block: info, inline: InlineInfo(), style: style)
@@ -98,10 +103,13 @@ enum EditorDocument {
             block.info = info
 
             if info.type.isAttachment {
-                if let r = EditorStyling.attachmentRange(inParagraph: enclosing, of: s),
-                   let image = s.attribute(.attachment, at: r.location, effectiveRange: nil) as? RichImageAttachment {
+                let attachment = EditorStyling.attachmentRange(inParagraph: enclosing, of: s)
+                    .flatMap { s.attribute(.attachment, at: $0.location, effectiveRange: nil) }
+                if let image = attachment as? RichImageAttachment {
                     block.image = EditorImage(source: image.source, alt: image.alt, size: image.naturalSize)
-                } else if info.type == .image {
+                } else if let table = attachment as? RichTableAttachment {
+                    block.table = table.table
+                } else if info.type == .image || info.type == .table {
                     block.info.type = .paragraph
                 }
             } else {

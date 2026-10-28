@@ -33,6 +33,7 @@ public struct RichEditorCommand: Identifiable, Equatable {
             (.callout, "Make writing stand out.", ["callout", "note", "info", "tip", "warning", "box"]),
             (.codeBlock, "Capture a code snippet.", ["code", "snippet", "pre", "```"]),
             (.divider, "Visually divide blocks.", ["divider", "line", "hr", "separator", "---"]),
+            (.table, "Add a table with a header row.", ["table", "grid", "rows", "columns", "cells"]),
             (.image, "Upload or embed with a link.", ["image", "photo", "picture", "img", "media"])
         ]
         for (type, subtitle, keywords) in blocks where config.allowedBlocks.contains(type) {
@@ -44,15 +45,6 @@ public struct RichEditorCommand: Identifiable, Equatable {
             commands.append(RichEditorCommand(id: "image-url", title: "Image from link", subtitle: "Embed an image from a URL.",
                                               symbolName: "link", section: "Media", keywords: ["image", "url", "link", "embed"],
                                               action: .imageFromURL))
-        }
-        for color in config.assetColors {
-            commands.append(RichEditorCommand(id: "color-\(color.rawValue)", title: color.title,
-                                              subtitle: "App text color", symbolName: "textformat", section: "Color",
-                                              keywords: [color.title.lowercased(), "color", "colour", "text", "app"], action: .textColor(color)))
-            commands.append(RichEditorCommand(id: "background-\(color.rawValue)", title: "\(color.title) background",
-                                              subtitle: "App highlight", symbolName: "highlighter", section: "Color",
-                                              keywords: [color.title.lowercased(), "background", "highlight", "bg", "app"],
-                                              action: .background(color)))
         }
         for color in RichColor.allCases {
             commands.append(RichEditorCommand(id: "color-\(color.rawValue)", title: color == .default ? "Default color" : color.title,
@@ -138,6 +130,18 @@ extension RichEditorController {
             let previous = range.location > 0 ? s.character(at: range.location - 1) : 10
             let atWordStart = range.location == p.range.location || [10, 32, 9, 0x2028, 0xA0].contains(previous)
             if atWordStart { pendingSlashLocation = range.location }
+        }
+
+        // Replacing text (suggestion, autocorrect, typing over a selection):
+        // the new text keeps the formatting of what it replaces.
+        if range.length > 0, !text.isEmpty, range.location < tv.textStorage.length {
+            let replaced = tv.textStorage.attributes(at: range.location, effectiveRange: nil)
+            let inline = InlineInfo(replaced)
+            let block = BlockInfo(replaced)
+            tv.typingAttributes = EditorStyling.attributes(block: block, inline: inline, style: style)
+            pendingReplacementStyle = (NSRange(location: range.location, length: (text as NSString).length), inline)
+        } else {
+            pendingReplacementStyle = nil
         }
         return true
     }

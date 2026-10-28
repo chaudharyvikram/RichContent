@@ -60,9 +60,9 @@ public struct RichContentStyle: Hashable {
     /// Replace the fonts / near-black colors HTML brings with this style's,
     /// so emails match the app and follow dark mode.
     public var normalizesHTMLFonts: Bool = true
-    /// Web view only: load remote images, fonts and CSS. Off by default
-    /// (blocks tracking pixels).
-    public var allowsRemoteContent: Bool = false
+    /// Web view only: load remote images, fonts and CSS. On by default; turn
+    /// off for untrusted mail to block tracking pixels and remote fonts / CSS.
+    public var allowsRemoteContent: Bool = true
     public var detectsLinks: Bool = true
     /// Keep single newlines in Markdown as line breaks (email-style text).
     public var preservesMarkdownLineBreaks: Bool = true

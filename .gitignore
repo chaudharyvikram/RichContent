@@ -10,3 +10,9 @@ DerivedData/
 .build/
 .swiftpm/
 Package.resolved
+
+# Local test content (your own emails / server responses), never committed.
+# Only the README and the empty starter file are tracked; see LocalContent/README.md.
+Demo/RichContentDemo/LocalContent/*
+!Demo/RichContentDemo/LocalContent/README.md
+!Demo/RichContentDemo/LocalContent/htmlcontent.html

@@ -105,9 +105,26 @@ public enum RichEditorSerializer {
             var attrs = "src=\"\(escapeHTML(image.source, attribute: true))\" alt=\"\(escapeHTML(image.alt, attribute: true))\""
             if let size = image.size, size.width > 0 { attrs += " width=\"\(Int(size.width))\" height=\"\(Int(size.height))\"" }
             return "<div data-type=\"image\"><img \(attrs) style=\"max-width:100%;height:auto\"></div>" + indented(node.children)
+        case .table:
+            guard let table = block.table else { return indented(node.children) }
+            return tableHTML(table) + indented(node.children)
         default:
             return paragraphDiv(block) + indented(node.children)
         }
+    }
+
+    /// `<table data-type="table">` with inline styles mail clients keep; cells
+    /// hold the cell's blocks as HTML, header cells are `<th>`.
+    static func tableHTML(_ table: EditorTable) -> String {
+        let cellStyle = "border:1px solid #D9D9D6;padding:6px 8px;vertical-align:top;text-align:left"
+        var out = "<table data-type=\"table\" style=\"border-collapse:collapse;width:100%;margin:4px 0\">"
+        for (r, row) in table.rows.enumerated() {
+            let header = table.hasHeaderRow && r == 0
+            let tag = header ? "th" : "td"
+            let style = header ? cellStyle + ";background:#F1F1EF;font-weight:600" : cellStyle
+            out += "<tr>" + row.map { "<\(tag) style=\"\(style)\">\(html(blocks: $0))</\(tag)>" }.joined() + "</tr>"
+        }
+        return out + "</table>"
     }
 
     private static func paragraphDiv(_ block: EditorBlock) -> String {
@@ -208,12 +225,33 @@ public enum RichEditorSerializer {
                 }
             case .paragraph:
                 if !text.isEmpty { lines.append(indent + escapeLineStart(hardBreaks(text, indent))) }
+            case .table:
+                if let table = block.table { lines += markdownTable(table).map { indent + $0 } }
             }
             if !node.children.isEmpty {
                 lines.append("")
                 markdown(node.children, indent: indent, into: &lines)
             }
         }
+    }
+
+    /// GitHub-style pipe table. Markdown tables need a header row, so a table
+    /// without one gets an empty header. Multi-line cells use `<br>`.
+    static func markdownTable(_ table: EditorTable) -> [String] {
+        func cell(_ blocks: [EditorBlock]) -> String {
+            markdown(blocks: blocks)
+                .replacingOccurrences(of: "\n\n", with: "<br>")
+                .replacingOccurrences(of: "\n", with: "<br>")
+                .replacingOccurrences(of: "|", with: "\\|")
+        }
+        func line(_ cells: [String]) -> String { "| " + cells.joined(separator: " | ") + " |" }
+        let columns = max(table.columnCount, 1)
+        let rows = table.rows.map { line($0.map(cell)) }
+        let separator = line(Array(repeating: "---", count: columns))
+        if table.hasHeaderRow {
+            return [rows[0], separator] + rows.dropFirst()
+        }
+        return [line(Array(repeating: " ", count: columns)), separator] + rows
     }
 
     private static func hardBreaks(_ text: String, _ continuation: String) -> String {
@@ -278,8 +316,12 @@ public enum RichEditorSerializer {
     // MARK: - Plain text
 
     public static func plainText(from s: NSAttributedString) -> String {
+        plainText(blocks: EditorDocument.blocks(from: s))
+    }
+
+    static func plainText(blocks: [EditorBlock]) -> String {
         var lines: [String] = []
-        plainText(tree(EditorDocument.blocks(from: s)), depth: 0, into: &lines)
+        plainText(tree(blocks), depth: 0, into: &lines)
         return lines.joined(separator: "\n")
     }
 
@@ -302,6 +344,12 @@ public enum RichEditorSerializer {
             switch block.info.type {
             case .divider: lines.append(indent + "———")
             case .image: lines.append(indent + "[Image" + (block.image?.alt.isEmpty == false ? ": \(block.image!.alt)" : "") + "]")
+            case .table:
+                // One line per row, cells separated by tabs.
+                for row in block.table?.rows ?? [] {
+                    let cells = row.map { plainText(blocks: $0).replacingOccurrences(of: "\n", with: " ") }
+                    lines.append(indent + cells.joined(separator: "\t"))
+                }
             case .codeBlock:
                 lines += block.text.components(separatedBy: EditorStyling.lineBreak).map { indent + $0 }
             default:
