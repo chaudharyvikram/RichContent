@@ -291,18 +291,24 @@ public final class RichEditorTextView: UITextView {
         let point = gestureRecognizer.location(in: self)
         // The quoted original is read-only: no caret or selection there, only scrolling.
         if isQuotedOriginalTouch(gestureRecognizer) { return false }
-        if gestureRecognizer === markerTap { return markerHit(at: point) != nil }
+        if gestureRecognizer === markerTap { return markerHit(at: point) != nil || failedUploadImage(at: point) != nil }
         // Touches on the menus / handle belong to them, not to text selection.
         for overlay in [slashMenu, selectionToolbar, blockHandle] as [UIView]
         where !overlay.isHidden && overlay.frame.insetBy(dx: -6, dy: -6).contains(point) && gestureRecognizer.view === self {
             return false
         }
         // Don't move the caret / start selection when a marker is tapped.
-        if gestureRecognizer is UITapGestureRecognizer, markerHit(at: point) != nil { return false }
+        if gestureRecognizer is UITapGestureRecognizer, markerHit(at: point) != nil || failedUploadImage(at: point) != nil {
+            return false
+        }
         return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
 
     @objc private func handleMarkerTap(_ recognizer: UITapGestureRecognizer) {
+        if let failed = failedUploadImage(at: recognizer.location(in: self)) {
+            presentImageUploadFailure(source: failed.source)
+            return
+        }
         guard let controller = editorController, let hit = markerHit(at: recognizer.location(in: self)) else { return }
         UISelectionFeedbackGenerator().selectionChanged()
         switch hit.info.type {

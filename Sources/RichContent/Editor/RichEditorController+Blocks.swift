@@ -317,12 +317,7 @@ extension RichEditorController {
         var block = EditorBlock(.image, level: info(ofParagraphAt: selectedRange.location).level)
         block.image = EditorImage(source: dataURL, alt: alt, size: scaled.size)
         insertAttachmentBlock(block, actionName: "Image")
-
-        guard let uploader = imageUploader else { return }
-        Task { [weak self] in
-            guard let url = try? await uploader(scaled) else { return }
-            await MainActor.run { self?.replaceImageSource(dataURL, with: url.absoluteString) }
-        }
+        startImageUpload(source: dataURL, image: scaled)
     }
 
     /// Inserts an image block that loads from `url`.
@@ -331,14 +326,6 @@ extension RichEditorController {
         var block = EditorBlock(.image, level: info(ofParagraphAt: selectedRange.location).level)
         block.image = EditorImage(source: url.absoluteString, alt: alt)
         insertAttachmentBlock(block, actionName: "Image")
-    }
-
-    private func replaceImageSource(_ old: String, with new: String) {
-        guard let s = storage else { return }
-        s.enumerateAttribute(.attachment, in: NSRange(location: 0, length: s.length)) { value, _, _ in
-            if let image = value as? RichImageAttachment, image.source == old { image.source = new }
-        }
-        onChange?(self)
     }
 
     /// Image / divider: replaces an empty current block, else goes below it.

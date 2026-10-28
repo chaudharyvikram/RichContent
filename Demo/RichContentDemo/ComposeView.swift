@@ -10,6 +10,7 @@ struct ComposeView: View {
         let editor = RichEditorController(style: .email, configuration: config)
         editor.quotedOriginal = QuotedOriginal(.html(DemoSamples.originalEmail),
                                                attribution: "On Oct 28, 2026 at 9:41 AM, Alex Kim <alex@example.com> wrote:")
+        editor.imageUploader = DemoUploader.upload
         return editor
     }()
     @State private var to = "alex@example.com"
@@ -37,7 +38,8 @@ struct ComposeView: View {
                     Button("Send", systemImage: "paperplane.fill") {
                         sentHTML = editor.replyHTML()
                     }
-                    .disabled(editor.isEmpty)
+                    // Not while a photo is uploading or has a failed upload.
+                    .disabled(editor.isEmpty || !editor.allImagesUploaded)
                 }
             }
             .richContentStyle(.email)
@@ -105,5 +107,26 @@ private struct SentMailView: View {
                 }
             }
         }
+    }
+}
+
+/// Stand-in for a real upload: takes 2 s and fails every other attempt, so
+/// "Uploading…", the Retry / Remove alert and the disabled Send button can be
+/// tried. "Uploaded" photos are saved to a temporary file.
+enum DemoUploader {
+    struct Failure: LocalizedError {
+        var errorDescription: String? { "The demo server rejected every other upload." }
+    }
+
+    @MainActor private static var attempts = 0
+
+    @MainActor static func upload(_ image: UIImage) async throws -> URL {
+        attempts += 1
+        let fails = attempts.isMultiple(of: 2) == false
+        try await Task.sleep(nanoseconds: 2_000_000_000)
+        if fails { throw Failure() }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
+        try image.jpegData(compressionQuality: 0.85)?.write(to: url)
+        return url
     }
 }

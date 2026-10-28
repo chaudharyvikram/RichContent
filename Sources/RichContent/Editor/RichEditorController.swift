@@ -23,6 +23,10 @@ public struct RichEditorConfiguration {
     public var assetColors: [RichColor] = []
     /// Pasted / picked images are scaled down to this many pixels on the long side.
     public var maxImagePixelSize: CGFloat = 2048
+    /// When an `imageUploader` upload fails, show an alert with Retry and
+    /// Remove Image. The failed image also keeps a badge; tapping it offers
+    /// the same choices.
+    public var showsImageUploadFailureAlert = true
 
     public init() {}
 
@@ -66,6 +70,10 @@ public final class RichEditorController: NSObject, ObservableObject {
     @Published public private(set) var canRedo = false
     @Published public private(set) var canIndent = false
     @Published public private(set) var canOutdent = false
+    /// Images in the document still uploading with `imageUploader`.
+    @Published public internal(set) var pendingImageUploads = 0
+    /// Images in the document whose upload failed (Retry / Remove pending).
+    @Published public internal(set) var failedImageUploads = 0
 
     public var configuration: RichEditorConfiguration {
         didSet { textView?.configurationDidChange() }
@@ -75,8 +83,16 @@ public final class RichEditorController: NSObject, ObservableObject {
     public var onChange: ((RichEditorController) -> Void)?
 
     /// Uploads a picked / pasted image and returns its URL. Without it,
-    /// images are embedded as `data:` URLs.
+    /// images are embedded as `data:` URLs. While it runs the image shows
+    /// "Uploading…"; check `allImagesUploaded` before sending.
     public var imageUploader: ((UIImage) async throws -> URL)?
+
+    /// Called when an image upload fails (in addition to the alert, see
+    /// `RichEditorConfiguration.showsImageUploadFailureAlert`).
+    public var onImageUploadFailure: ((Error) -> Void)?
+
+    /// Uploads started in this editor, by the image's `data:` source.
+    var imageUploads: [ImageUpload] = []
 
     public private(set) var style: RichContentStyle
     private(set) weak var textView: RichEditorTextView?
@@ -425,6 +441,7 @@ public final class RichEditorController: NSObject, ObservableObject {
         tv.updatePlaceholder()
         tv.redrawDecorations()
         refreshState()
+        updateImageUploadStates()
         tv.updateOverlays()
         onChange?(self)
     }

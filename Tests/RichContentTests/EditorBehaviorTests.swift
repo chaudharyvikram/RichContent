@@ -374,6 +374,76 @@ final class EditorBehaviorTests: XCTestCase {
         XCTAssertTrue(InlineInfo(textView.textStorage.attributes(at: textView.textStorage.length - 1, effectiveRange: nil)).italic)
     }
 
+    // MARK: Image uploads
+
+    private struct UploadError: Error {}
+
+    private func waitUntil(_ condition: () -> Bool) async throws {
+        for _ in 0..<200 where !condition() { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertTrue(condition())
+    }
+
+    private var photo: UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+    }
+
+    func testFailedImageUploadBlocksSendingUntilRetried() async throws {
+        var fails = true
+        var reported = 0
+        editor.configuration.showsImageUploadFailureAlert = false
+        editor.onImageUploadFailure = { _ in reported += 1 }
+        editor.imageUploader = { _ in
+            if fails { throw UploadError() }
+            return URL(string: "https://cdn.example.com/photo.jpg")!
+        }
+
+        editor.insertImage(photo)
+        XCTAssertEqual(editor.pendingImageUploads, 1)
+        XCTAssertFalse(editor.allImagesUploaded)
+
+        try await waitUntil { editor.failedImageUploads == 1 }
+        XCTAssertEqual(editor.pendingImageUploads, 0)
+        XCTAssertFalse(editor.allImagesUploaded)
+        XCTAssertEqual(reported, 1)
+        let attachment = textView.textStorage.attribute(.attachment, at: 0, effectiveRange: nil) as? RichImageAttachment
+        XCTAssertEqual(attachment?.uploadState, .failed)
+
+        fails = false
+        editor.retryFailedImageUploads()
+        XCTAssertEqual(editor.pendingImageUploads, 1)
+        try await waitUntil { editor.allImagesUploaded }
+        XCTAssertTrue(editor.html.contains("https://cdn.example.com/photo.jpg"))
+        XCTAssertFalse(editor.html.contains("data:image"))
+    }
+
+    func testFailedImageCanBeRemoved() async throws {
+        editor.configuration.showsImageUploadFailureAlert = false
+        editor.imageUploader = { _ in throw UploadError() }
+        type("Hello")
+        editor.insertImage(photo)
+        try await waitUntil { editor.failedImageUploads == 1 }
+
+        editor.removeFailedImages()
+        XCTAssertTrue(editor.allImagesUploaded)
+        XCTAssertFalse(editor.html.contains("<img"))
+        XCTAssertTrue(blocks.contains("paragraph@1: Hello"))
+    }
+
+    func testDeletingAnUploadingImageUnblocksSending() async throws {
+        editor.imageUploader = { _ in
+            try await Task.sleep(nanoseconds: 5_000_000_000)
+            return URL(string: "https://cdn.example.com/slow.jpg")!
+        }
+        editor.insertImage(photo)
+        XCTAssertFalse(editor.allImagesUploaded)
+        textView.selectedRange = NSRange(location: 0, length: 0)
+        editor.deleteBlock()
+        XCTAssertTrue(editor.allImagesUploaded)
+    }
+
     func testQuotedOriginalIsShownButNotEditableAndIsSent() {
         type("Sounds good")
         XCTAssertEqual(editor.replyHTML(), editor.html)

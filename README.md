@@ -260,6 +260,34 @@ editor.quotedOriginal = nil   // remove it
 The editor's HTML import is its own parser (no WebKit), so loading is fast
 and works off-screen and in previews.
 
+### Image uploads
+
+Picked and pasted images are scaled to `maxImagePixelSize` and shown at once.
+Without an `imageUploader` they stay embedded as `data:` URLs. With one, the
+image shows "Uploading…" until your closure returns its URL, which replaces
+the embedded data in `html` / `replyHTML()`.
+
+If an upload fails, the image is badged "Upload failed" and an alert offers
+**Retry** and **Remove Image** (tapping the badge later asks again). Gate
+sending on `allImagesUploaded`, which is `false` while any image in the
+document is uploading or failed:
+
+```swift
+editor.imageUploader = { image in try await api.upload(image) }
+editor.onImageUploadFailure = { error in log(error) }    // optional
+// editor.configuration.showsImageUploadFailureAlert = false   // to show your own UI
+
+Button("Send") { send(editor.replyHTML()) }
+    .disabled(editor.isEmpty || !editor.allImagesUploaded)
+
+editor.pendingImageUploads        // uploading now
+editor.failedImageUploads         // waiting for Retry / Remove
+editor.retryFailedImageUploads()
+editor.removeFailedImages()
+```
+
+Deleting an uploading or failed image unblocks sending.
+
 ## Not covered yet
 
 - Reference-style Markdown images (`![alt][ref]`) show their alt text only.

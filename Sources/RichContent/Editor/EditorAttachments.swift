@@ -58,6 +58,8 @@ final class RichDividerAttachment: EditorBlockAttachment {
 public final class RichImageAttachment: EditorBlockAttachment {
 
     public enum State { case loading, loaded, failed }
+    /// Upload through `RichEditorController.imageUploader`.
+    public enum UploadState { case uploading, failed }
 
     /// `https://…`, `data:image/…;base64,…` or a file URL.
     public internal(set) var source: String
@@ -66,6 +68,9 @@ public final class RichImageAttachment: EditorBlockAttachment {
     public private(set) var naturalSize: CGSize?
     public private(set) var state: State = .loading
     public private(set) var loadedImage: UIImage?
+    /// Set while this image uploads and after its upload failed (drawn as a
+    /// badge; a failed image offers Retry / Remove when tapped).
+    public internal(set) var uploadState: UploadState?
 
     private static let cache = NSCache<NSString, UIImage>()
     private var loadTask: Task<Void, Never>?
@@ -167,6 +172,7 @@ public final class RichImageAttachment: EditorBlockAttachment {
             if state == .loaded, let image = loadedImage {
                 path.addClip()
                 image.draw(in: rect)
+                if let uploadState { drawUploadBadge(uploadState, in: rect) }
                 return
             }
             UIColor.tertiarySystemFill.setFill()
@@ -195,5 +201,32 @@ public final class RichImageAttachment: EditorBlockAttachment {
                 }
             }
         }
+    }
+
+    /// Dims the image and shows "Uploading…" or "Upload failed".
+    private func drawUploadBadge(_ upload: UploadState, in rect: CGRect) {
+        UIColor.black.withAlphaComponent(upload == .failed ? 0.45 : 0.25).setFill()
+        UIRectFillUsingBlendMode(rect, .normal)
+        let symbol = upload == .failed ? "exclamationmark.triangle.fill" : "arrow.up.circle.fill"
+        let label = upload == .failed ? "Upload failed · Tap for options" : "Uploading…"
+        let icon = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .semibold))?
+            .withTintColor(upload == .failed ? .systemYellow : .white, renderingMode: .alwaysOriginal)
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: UIFont.preferredFont(forTextStyle: .footnote).pointSize, weight: .semibold),
+            .foregroundColor: UIColor.white
+        ]
+        let textSize = (label as NSString).size(withAttributes: attrs)
+        let iconHeight = icon?.size.height ?? 0
+        var y = rect.midY - (iconHeight + 6 + textSize.height) / 2
+        if let icon {
+            icon.draw(at: CGPoint(x: rect.midX - icon.size.width / 2, y: y))
+            y += iconHeight + 6
+        }
+        let p = NSMutableParagraphStyle()
+        p.alignment = .center
+        p.lineBreakMode = .byTruncatingTail
+        var a = attrs
+        a[.paragraphStyle] = p
+        (label as NSString).draw(in: CGRect(x: rect.minX + 8, y: y, width: rect.width - 16, height: textSize.height), withAttributes: a)
     }
 }
