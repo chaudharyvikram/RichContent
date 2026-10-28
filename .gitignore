@@ -10,3 +10,6 @@ DerivedData/
 .build/
 .swiftpm/
 Package.resolved
+
+# Local test content (your own email / server response), never committed
+Demo/RichContentDemo/htmlcontent.html

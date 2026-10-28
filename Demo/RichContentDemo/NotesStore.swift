@@ -6,6 +6,8 @@ struct Note: Identifiable, Codable, Hashable {
     /// The editor's HTML: lossless, what the app saves.
     var html: String
     var updated = Date()
+    /// Shown in the list instead of the first line of the text.
+    var title: String?
 }
 
 /// Notes saved as JSON in Documents. Seeded with the demo notes.
@@ -21,28 +23,29 @@ final class NotesStore: ObservableObject {
     init() {
         if let data = try? Data(contentsOf: url), let saved = try? JSONDecoder().decode([Note].self, from: data), !saved.isEmpty {
             notes = saved
-            addNewsletterOnce()
+            addHTMLContentOnce()
         } else {
             resetSamples()
         }
         notes.forEach(summarize)
     }
 
-    /// The "Notion Block" note: a real marketing email imported into the editor.
-    /// `.auto` takes the string as it comes, HTML, Markdown or a mix of both.
-    private static func newsletterNote(updated: Date) -> Note {
-        let body = "<h1>Notion Block</h1>\n" + DemoSamples.notionNewsletter
-        return Note(html: RichEditorController(content: .auto(body)).html, updated: updated)
+    /// The "HTML" note, from your local `htmlcontent.html`. The content is
+    /// passed unchanged; `.auto` works out HTML, Markdown or a mix.
+    private static func htmlContentNote(updated: Date) -> Note? {
+        guard let content = DemoSamples.htmlContent else { return nil }
+        return Note(html: RichEditorController(content: .auto(content)).html, updated: updated, title: "HTML")
     }
 
-    private static let newsletterKey = "addedNotionNewsletterNote"
+    private static let htmlContentKey = "addedHTMLContentNote"
 
-    /// Adds the newsletter note to notes saved before it existed (once, so
+    /// Adds the "HTML" note to notes saved before the file existed (once, so
     /// deleting it sticks).
-    private func addNewsletterOnce() {
-        guard !UserDefaults.standard.bool(forKey: Self.newsletterKey) else { return }
-        UserDefaults.standard.set(true, forKey: Self.newsletterKey)
-        notes.insert(Self.newsletterNote(updated: Date()), at: 0)
+    private func addHTMLContentOnce() {
+        guard !UserDefaults.standard.bool(forKey: Self.htmlContentKey),
+              let note = Self.htmlContentNote(updated: Date()) else { return }
+        UserDefaults.standard.set(true, forKey: Self.htmlContentKey)
+        notes.insert(note, at: 0)
         save()
     }
 
@@ -50,12 +53,12 @@ final class NotesStore: ObservableObject {
         let now = Date()
         notes = [
             Note(html: DemoSamples.welcome, updated: now),
-            Self.newsletterNote(updated: now.addingTimeInterval(-60)),
+            Self.htmlContentNote(updated: now.addingTimeInterval(-60)),
             Note(html: DemoSamples.meeting, updated: now.addingTimeInterval(-3600)),
             Note(html: RichEditorController(content: .markdown(DemoSamples.markdownNote)).html, updated: now.addingTimeInterval(-86400))
-        ]
+        ].compactMap { $0 }
         notes.forEach(summarize)
-        UserDefaults.standard.set(true, forKey: Self.newsletterKey)
+        if notes.contains(where: { $0.title != nil }) { UserDefaults.standard.set(true, forKey: Self.htmlContentKey) }
         save()
     }
 
@@ -90,7 +93,11 @@ final class NotesStore: ObservableObject {
             .components(separatedBy: "\n")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && $0 != "———" }
-        summaries[note.id] = (lines.first ?? "Untitled", lines.dropFirst().first ?? "")
+        if let title = note.title {
+            summaries[note.id] = (title, lines.first ?? "")
+        } else {
+            summaries[note.id] = (lines.first ?? "Untitled", lines.dropFirst().first ?? "")
+        }
     }
 
     private func save() {

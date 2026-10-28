@@ -19,9 +19,9 @@ xcodebuild -project Demo/RichContentDemo.xcodeproj -scheme RichContentDemo -dest
 
 | Tab | Shows |
 |---|---|
-| **Notes** | A small notes app. Notes are saved as the editor's HTML (in Documents/notes.json) as you type, and reopen exactly as you left them. The **Welcome** note is a guided tour; **Notion Block** is a real marketing email (layout tables, hidden preheader, remote images) imported from HTML; **Weekly sync** is a realistic meeting note; the last was imported from Markdown. ⚙︎ toggles editor options and allowed blocks live; Export shows the HTML / Markdown / plain text and a rendered preview. "…" → Restore Sample Notes resets everything. |
+| **Notes** | A small notes app. Notes are saved as the editor's HTML (in Documents/notes.json) as you type, and reopen exactly as you left them. The **Welcome** note is a guided tour; **Weekly sync** is a realistic meeting note; the last was imported from Markdown. ⚙︎ toggles editor options and allowed blocks live; Export shows the HTML / Markdown / plain text and a rendered preview. "…" → Restore Sample Notes resets everything. |
 | **Compose** | An email reply using `RichEditorConfiguration.email` (no toggles / callouts). Send shows the reply built with `replyHTML(quoting:attribution:)`, rendered and as HTML source. |
-| **Viewer** | `RichContentView` on plain-text quoting, an HTML email, a table newsletter (web view), Markdown, the editor's own output, one string mixing HTML, Markdown and plain text, and the Notion Block email (`NotionNewsletter.html`, loaded as a plain string). |
+| **Viewer** | `RichContentView` on plain-text quoting, an HTML email, a table newsletter (web view), Markdown, the editor's own output, and one string mixing HTML, Markdown and plain text. |
 
 ## Things to try in the editor
 
@@ -33,3 +33,12 @@ xcodebuild -project Demo/RichContentDemo.xcodeproj -scheme RichContentDemo -dest
 - Tap the ⋮⋮ handle beside the current block for its menu; drag it to move the block.
 - Paste from Safari, Notes or Google Docs; paste a URL over selected text.
 - Use the 📷 button or `/image` for photos, `/image from link` for a URL.
+
+## Your own content
+
+Paste a server response, exactly as received, into
+`Demo/RichContentDemo/htmlcontent.html` (ignored by git, so it stays on
+your machine). It appears as the **HTML** note and Viewer sample,
+passed unchanged to `.auto`, which handles HTML, Markdown, a mix of both, and
+JSON-escaped strings. If you ran the demo before adding the file, the note
+is added on the next launch.
