@@ -113,6 +113,7 @@ enum DemoSamples {
         <table><tr><td style="background:#337EA9;border-radius:6px;padding:10px 16px"><a href="https://example.com" style="color:white">Read more</a></td></tr></table>
         </td></tr></table>
         """)),
+        ViewerSample(id: "notion", title: "Notion Block", subtitle: "A real marketing email, as one plain string", content: .auto(notionNewsletter)),
         ViewerSample(id: "markdown", title: "Markdown notes", subtitle: "Headings, nested lists, code", content: .markdown(markdownNote)),
         ViewerSample(id: "editor", title: "Editor output", subtitle: "The welcome note's HTML, read-only", content: .html(welcome)),
         ViewerSample(id: "mixed", title: "Mixed formats", subtitle: "One string: HTML, then Markdown, then plain", content: .auto("""

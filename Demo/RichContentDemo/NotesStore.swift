@@ -29,9 +29,10 @@ final class NotesStore: ObservableObject {
     }
 
     /// The "Notion Block" note: a real marketing email imported into the editor.
+    /// `.auto` takes the string as it comes, HTML, Markdown or a mix of both.
     private static func newsletterNote(updated: Date) -> Note {
-        let html = "<h1>Notion Block</h1>" + DemoSamples.notionNewsletter
-        return Note(html: RichEditorController(content: .html(html)).html, updated: updated)
+        let body = "<h1>Notion Block</h1>\n" + DemoSamples.notionNewsletter
+        return Note(html: RichEditorController(content: .auto(body)).html, updated: updated)
     }
 
     private static let newsletterKey = "addedNotionNewsletterNote"
