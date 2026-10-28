@@ -374,6 +374,35 @@ final class EditorBehaviorTests: XCTestCase {
         XCTAssertTrue(InlineInfo(textView.textStorage.attributes(at: textView.textStorage.length - 1, effectiveRange: nil)).italic)
     }
 
+    func testPickedColorAppliesToSelectionFromWhenPickerOpened() {
+        type("hello world")
+        let purple = UIColor(red: 0.6, green: 0.2, blue: 0.9, alpha: 1)
+        // The picker moved the caret away; the color still goes to "hello".
+        caretAtEnd()
+        editor.applyPickedColor(purple, background: false, wholeBlock: false, range: NSRange(location: 0, length: 5))
+        XCTAssertEqual(InlineInfo(textView.textStorage.attributes(at: 0, effectiveRange: nil)).color, .custom(purple))
+        XCTAssertNil(InlineInfo(textView.textStorage.attributes(at: 6, effectiveRange: nil)).color)
+
+        editor.applyPickedColor(purple, background: true, wholeBlock: false, range: NSRange(location: 6, length: 5))
+        XCTAssertEqual(InlineInfo(textView.textStorage.attributes(at: 6, effectiveRange: nil)).highlight, .custom(purple))
+    }
+
+    func testColorPickerAppliesOnceAndOnlyWhenChanged() {
+        var applied: [UIColor] = []
+        let done = expectation(description: "applied")
+        let coordinator = ColorPickerCoordinator(initial: .black) { applied.append($0); done.fulfill() }
+        coordinator.finish(with: .purple)
+        coordinator.finish(with: .red)   // ✕ and swipe-dismiss both reporting
+        wait(for: [done], timeout: 1)
+        XCTAssertEqual(applied.map { RichColor.custom($0) }, [.custom(.purple)])
+
+        var unchanged = false
+        let closedUntouched = ColorPickerCoordinator(initial: .black) { _ in unchanged = true }
+        closedUntouched.finish(with: .black)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertFalse(unchanged)
+    }
+
     func testHeadingBoldIsNotAFormat() {
         type("# Title")
         XCTAssertFalse(editor.activeFormats.contains(.bold))
