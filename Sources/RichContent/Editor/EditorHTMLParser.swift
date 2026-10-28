@@ -370,6 +370,13 @@ enum EditorHTMLParser {
                 flush()
 
             case "table":
+                if let table = EditorHTMLParser.dataTable(node) {
+                    var block = EditorBlock(.table, level: ctx.level)
+                    block.table = table
+                    appendAttachment(block)
+                    return
+                }
+                // Layout table (designed emails): its text flows as paragraphs.
                 boundary()
                 visitChildren(of: node, ctx)
                 flush()
@@ -562,6 +569,63 @@ enum EditorHTMLParser {
         let digits = hex.dropFirst()
         guard digits.count == 3 else { return String(digits) }
         return digits.map { "\($0)\($0)" }.joined()
+    }
+
+    // MARK: - Tables
+
+    /// A data table as a table block; `nil` for layout tables (designed
+    /// emails: `role="presentation"`, nested tables, no header / borders).
+    static func dataTable(_ node: Node) -> EditorTable? {
+        let rows = tableRows(node)
+        guard !rows.isEmpty else { return nil }
+        let cells = rows.map(tableCells)
+        let columns = cells.map(\.count).max() ?? 0
+        guard columns > 0 else { return nil }
+
+        let ours = node["data-type"]?.lowercased() == "table"
+        if !ours {
+            if node["role"]?.lowercased() == "presentation" || contains(node, "table") { return nil }
+            let hasHeader = cells.contains { $0.contains { $0.name == "th" } }
+            let border = node["border"].map { $0 != "0" && !$0.isEmpty } ?? false
+            let borderStyle = [node["style"]] + cells.flatMap { $0.map { $0["style"] } }
+            let styledBorders = borderStyle.contains { style in
+                guard let style = style?.lowercased() else { return false }
+                return style.range(of: #"border(-(top|bottom|left|right))?\s*:\s*[^;]*(solid|dashed|dotted)"#,
+                                   options: .regularExpression) != nil
+            }
+            guard (hasHeader || border || styledBorders), columns >= 2 || rows.count >= 2 else { return nil }
+        }
+
+        let headerRow = cells.first.map { !$0.isEmpty && $0.allSatisfy { $0.name == "th" } } ?? false
+            || rows.first?.parent?.name == "thead"
+        let content: [[[EditorBlock]]] = cells.map { row in
+            row.map { cell in
+                var builder = Builder()
+                builder.visitChildren(of: cell, Context())
+                builder.flush()
+                return postProcess(builder.blocks)
+            }
+        }
+        return EditorTable(rows: content, hasHeaderRow: headerRow)
+    }
+
+    /// `<tr>`s of a table, directly or in `<thead>` / `<tbody>` / `<tfoot>` (not nested tables).
+    private static func tableRows(_ table: Node) -> [Node] {
+        table.children.flatMap { child -> [Node] in
+            switch child.name {
+            case "tr": return [child]
+            case "thead", "tbody", "tfoot": return child.children.filter { $0.name == "tr" }
+            default: return []
+            }
+        }
+    }
+
+    private static func tableCells(_ row: Node) -> [Node] {
+        row.children.filter { $0.name == "td" || $0.name == "th" }
+    }
+
+    private static func contains(_ node: Node, _ name: String) -> Bool {
+        node.children.contains { $0.name == name || contains($0, name) }
     }
 
     // MARK: - Post-processing

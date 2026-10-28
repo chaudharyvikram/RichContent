@@ -128,7 +128,23 @@ enum EditorImporter {
         var current: EditorBlock?
         var text = NSMutableAttributedString()
         var seenListItems = Set<Int>()
-        var lastCell: Int?
+        /// The Markdown table being read: rows in order, cells by column.
+        var table: (id: Int, level: Int, rowOrder: [Int], cells: [Int: [Int: NSMutableAttributedString]], header: Bool)?
+
+        func finishTable() {
+            guard let t = table else { return }
+            table = nil
+            let columns = (t.cells.values.flatMap(\.keys).max() ?? 0) + 1
+            let rows: [[[EditorBlock]]] = t.rowOrder.map { row in
+                (0..<columns).map { column in
+                    guard let text = t.cells[row]?[column], text.length > 0 else { return [] }
+                    return [EditorBlock(.paragraph, content: text)]
+                }
+            }
+            var block = EditorBlock(.table, level: t.level)
+            block.table = EditorTable(rows: rows, hasHeaderRow: t.header)
+            blocks.append(block)
+        }
 
         func flush() {
             guard var block = current else { return }
@@ -149,21 +165,42 @@ enum EditorImporter {
 
         for run in parsed.runs {
             let intent = run.presentationIntent
+            let intents = run.inlinePresentationIntent ?? []
+
+            // Table cells collect into a table block.
+            if let position = tablePosition(intent) {
+                if table?.id != position.table {
+                    flush()
+                    finishTable()
+                    currentKey = nil
+                    table = (position.table, 1, [], [:], false)
+                }
+                if !table!.rowOrder.contains(position.row) { table!.rowOrder.append(position.row) }
+                if position.isHeader { table!.header = true }
+                var inline = InlineInfo()
+                inline.bold = intents.contains(.stronglyEmphasized)
+                inline.italic = intents.contains(.emphasized)
+                inline.code = intents.contains(.code)
+                inline.strike = intents.contains(.strikethrough)
+                inline.link = run.link
+                var string = String(parsed[run.range].characters)
+                if intents.contains(.softBreak) || intents.contains(.lineBreak) { string = EditorStyling.lineBreak }
+                let cell = table!.cells[position.row, default: [:]][position.column] ?? NSMutableAttributedString()
+                cell.append(NSAttributedString(string: string, attributes: inline.attributes))
+                table!.cells[position.row, default: [:]][position.column] = cell
+                continue
+            }
+            finishTable()
+
             let key = paragraphKey(intent)
             if key != currentKey || current == nil {
                 flush()
                 currentKey = key
                 current = block(for: intent, seenListItems: &seenListItems)
-                lastCell = nil
-            }
-            if let cell = tableCell(intent), cell != lastCell {
-                if lastCell != nil { text.append(NSAttributedString(string: "\t")) }
-                lastCell = cell
             }
 
             var inline = InlineInfo()
-            let intents = run.inlinePresentationIntent ?? []
-            inline.bold = intents.contains(.stronglyEmphasized) || isTableHeader(intent)
+            inline.bold = intents.contains(.stronglyEmphasized)
             inline.italic = intents.contains(.emphasized)
             inline.code = intents.contains(.code) && current?.info.type != .codeBlock
             inline.strike = intents.contains(.strikethrough)
@@ -190,6 +227,7 @@ enum EditorImporter {
             text.append(NSAttributedString(string: string, attributes: inline.attributes))
         }
         flush()
+        finishTable()
         return EditorHTMLParser.postProcess(blocks)
     }
 
@@ -247,12 +285,23 @@ enum EditorImporter {
         return intent.components.first?.identity
     }
 
-    private static func tableCell(_ intent: PresentationIntent?) -> Int? {
-        intent?.components.first { if case .tableCell = $0.kind { return true }; return false }?.identity
-    }
-
-    private static func isTableHeader(_ intent: PresentationIntent?) -> Bool {
-        intent?.components.contains { if case .tableHeaderRow = $0.kind { return true }; return false } ?? false
+    /// Where a run sits in a Markdown table: the table's and row's identity,
+    /// the cell's column, and whether it's the header row.
+    private static func tablePosition(_ intent: PresentationIntent?)
+        -> (table: Int, row: Int, column: Int, isHeader: Bool)? {
+        guard let components = intent?.components else { return nil }
+        var table: Int?, row: Int?, column: Int?, isHeader = false
+        for component in components {
+            switch component.kind {
+            case .table: table = component.identity
+            case .tableHeaderRow: row = component.identity; isHeader = true
+            case .tableRow: row = component.identity
+            case .tableCell(let index): column = index
+            default: break
+            }
+        }
+        guard let table, let row, let column else { return nil }
+        return (table, row, column, isHeader)
     }
 
     // MARK: - Rendered attributed text

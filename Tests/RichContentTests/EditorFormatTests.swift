@@ -14,8 +14,16 @@ final class EditorFormatTests: XCTestCase {
             if let c = b.info.color, b.info.type == .callout { flags.append(c.rawValue) }
             if let l = b.info.language { flags.append(l) }
             if b.hiddenChildren != nil { flags.append("closed") }
+            if b.table?.hasHeaderRow == true { flags.append("header") }
             let flagText = flags.isEmpty ? "" : "[" + flags.joined(separator: ",") + "]"
-            let text = b.image.map { "img:\($0.source)|\($0.alt)" } ?? b.text.replacingOccurrences(of: "\u{2028}", with: "⏎")
+            var text = b.image.map { "img:\($0.source)|\($0.alt)" } ?? b.text.replacingOccurrences(of: "\u{2028}", with: "⏎")
+            if let table = b.table {
+                // "a|b / c|d": rows by " / ", cells by "|", lines in a cell by "⏎".
+                text = table.rows.map { row in
+                    row.map { RichEditorSerializer.plainText(blocks: $0).replacingOccurrences(of: "\n", with: "⏎") }
+                        .joined(separator: "|")
+                }.joined(separator: " / ")
+            }
             return ["\(indent)\(b.info.type.rawValue)@\(b.info.level)\(flagText): \(text)"]
                 + describe(b.hiddenChildren ?? [], indent: indent + "  ")
         }
@@ -144,6 +152,62 @@ final class EditorFormatTests: XCTestCase {
         """), ["paragraph@1: Hi there", "paragraph@1: Bye"])
     }
 
+    // MARK: Tables
+
+    private var sampleTable: EditorBlock {
+        var table = EditorTable.empty(rows: 2, columns: 2)
+        table.rows[0][0] = [EditorBlock(.paragraph, text: "Name")]
+        table.rows[0][1] = [EditorBlock(.paragraph, text: "Qty")]
+        table.rows[1][0] = [EditorBlock(.paragraph, content: inline("Pen") { $0.bold = true })]
+        table.rows[1][1] = [EditorBlock(.bulletList, text: "a"), EditorBlock(.bulletList, text: "b")]
+        var block = EditorBlock(.table)
+        block.table = table
+        return block
+    }
+
+    func testDataTablesImportAsTableBlocks() {
+        let blocks = EditorHTMLParser.blocks(fromHTML: """
+        <table><thead><tr><th>Name</th><th>Qty</th></tr></thead>
+        <tbody><tr><td><b>Pen</b></td><td><ul><li>a</li><li>b</li></ul></td></tr></tbody></table>
+        """)
+        XCTAssertEqual(Self.describe(blocks), ["table@1[header]: Name|Qty / Pen|• a⏎• b"])
+        let pen = blocks[0].table!.rows[1][0][0].content
+        XCTAssertTrue(InlineInfo(pen.attributes(at: 0, effectiveRange: nil)).bold, "formats inside cells are kept")
+    }
+
+    func testLayoutTablesStayFlattened() {
+        XCTAssertEqual(html(#"<table role="presentation"><tr><td>Hi</td><td>there</td></tr></table>"#),
+                       ["paragraph@1: Hi\tthere"])
+        XCTAssertFalse(html("<table border=\"1\"><tr><td><table><tr><td>Nested</td></tr></table></td><td>x</td></tr></table>")
+            .contains { $0.hasPrefix("table@") }, "tables holding tables are layout")
+        XCTAssertFalse(html("<table width=\"600\"><tr><td>Layout</td><td>cell</td></tr></table>").contains { $0.hasPrefix("table@") },
+                       "no header, no borders: a layout table")
+    }
+
+    func testTableRoundTripsThroughHTML() {
+        let exported = RichEditorSerializer.html(blocks: [sampleTable])
+        XCTAssertTrue(exported.contains(#"<table data-type="table""#), exported)
+        XCTAssertTrue(exported.contains("<th"), exported)
+        let back = EditorHTMLParser.blocks(fromHTML: exported)
+        XCTAssertEqual(Self.describe(back), Self.describe([sampleTable]))
+        XCTAssertTrue(InlineInfo(back[0].table!.rows[1][0][0].content.attributes(at: 0, effectiveRange: nil)).bold)
+    }
+
+    func testTableToAndFromMarkdown() {
+        XCTAssertEqual(RichEditorSerializer.markdown(blocks: [sampleTable]),
+                       "| Name | Qty |\n| --- | --- |\n| **Pen** | - a<br>- b |")
+        XCTAssertEqual(markdown("| Name | Qty |\n| --- | --- |\n| Pen | *2* |"), ["table@1[header]: Name|Qty / Pen|2"])
+        let blocks = EditorImporter.markdownBlocks("Before\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nAfter")
+        XCTAssertEqual(Self.describe(blocks), ["paragraph@1: Before", "table@1[header]: A|B / 1|2", "paragraph@1: After"])
+    }
+
+    func testTableSurvivesTheEditorTextStorage() {
+        let document = [EditorBlock(.paragraph, text: "Before"), sampleTable, EditorBlock(.paragraph, text: "After")]
+        let storage = EditorDocument.attributedString(from: document, style: .standard)
+        XCTAssertEqual(Self.describe(EditorDocument.blocks(from: storage)), Self.describe(document))
+        XCTAssertEqual(RichEditorSerializer.plainText(from: storage), "Before\nName\tQty\nPen\t• a • b\nAfter")
+    }
+
     func testCustomColorsRoundTrip() {
         let custom = RichColor.custom(UIColor(red: 1, green: 0.5, blue: 0, alpha: 1))
         XCTAssertEqual(custom.rawValue, "hex:#FF8000")
@@ -208,8 +272,7 @@ final class EditorFormatTests: XCTestCase {
             "  paragraph@2: Inside",
             "divider@1: ",
             "image@1: img:https://x.com/a.png|A",
-            "paragraph@1: Name\tQty",
-            "paragraph@1: Pen\t2"
+            "table@1[header]: Name|Qty / Pen|2"
         ])
         let first = blocks[0].content
         XCTAssertTrue(InlineInfo(first.attributes(at: 0, effectiveRange: nil)).bold)

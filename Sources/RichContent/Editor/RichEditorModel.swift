@@ -5,14 +5,14 @@ import UIKit
 public enum RichBlockType: String, Hashable, CaseIterable {
     case paragraph, heading1, heading2, heading3
     case bulletList, numberedList, todo, toggle
-    case quote, callout, codeBlock, divider, image
+    case quote, callout, codeBlock, divider, image, table
 
     /// Blocks drawn with a marker in front (bullet, number, checkbox, chevron).
     public var hasMarker: Bool { self == .bulletList || self == .numberedList || self == .todo || self == .toggle }
     public var isList: Bool { self == .bulletList || self == .numberedList }
     public var isHeading: Bool { self == .heading1 || self == .heading2 || self == .heading3 }
     /// Blocks that hold one attachment instead of text.
-    public var isAttachment: Bool { self == .divider || self == .image }
+    public var isAttachment: Bool { self == .divider || self == .image || self == .table }
     /// Return inserts a line break inside the block instead of a new block.
     var keepsLineBreaks: Bool { self == .codeBlock || self == .callout }
 
@@ -31,6 +31,7 @@ public enum RichBlockType: String, Hashable, CaseIterable {
         case .codeBlock: return "Code"
         case .divider: return "Divider"
         case .image: return "Image"
+        case .table: return "Table"
         }
     }
 
@@ -49,6 +50,7 @@ public enum RichBlockType: String, Hashable, CaseIterable {
         case .codeBlock: return "chevron.left.forwardslash.chevron.right"
         case .divider: return "minus"
         case .image: return "photo"
+        case .table: return "tablecells"
         }
     }
 
@@ -465,7 +467,7 @@ enum EditorStyling {
         case .divider:
             p.paragraphSpacingBefore = 2
             p.paragraphSpacing = 2
-        case .image:
+        case .image, .table:
             p.paragraphSpacingBefore = 4
             p.paragraphSpacing = style.paragraphSpacing
         default:

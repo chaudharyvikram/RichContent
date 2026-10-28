@@ -246,6 +246,7 @@ public final class RichEditorController: NSObject, ObservableObject {
         tv.quotedOriginalDidChange()
         let selection = tv.selectedRange
         EditorStyling.normalize(tv.textStorage, in: NSRange(location: 0, length: tv.textStorage.length), style: newStyle)
+        prepareAttachments(in: NSRange(location: 0, length: tv.textStorage.length))
         tv.selectedRange = selection
         syncTypingAttributes()
         contentDidChange()
@@ -458,6 +459,7 @@ public final class RichEditorController: NSObject, ObservableObject {
             guard let attachment = value as? EditorBlockAttachment else { return }
             attachment.hostView = tv
             (attachment as? RichImageAttachment)?.loadIfNeeded(allowsRemote: configuration.loadsRemoteImages)
+            (attachment as? RichTableAttachment)?.update(style: style)
         }
     }
 
