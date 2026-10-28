@@ -307,6 +307,15 @@ editor.removeFailedImages()
 
 Deleting an uploading or failed image unblocks sending.
 
+## Claude Code skill
+
+`.claude/skills/richcontent/` teaches Claude Code how to use this package:
+which view to pick, styling, the editor, replies, image uploads and common
+pitfalls, with an API reference and recipes for SwiftUI and UIKit. It loads
+automatically in this repo. To use it in an app that depends on RichContent,
+copy the folder into that app's `.claude/skills/` (or `~/.claude/skills/` for
+all projects).
+
 ## Not covered yet
 
 - Reference-style Markdown images (`![alt][ref]`) show their alt text only.
