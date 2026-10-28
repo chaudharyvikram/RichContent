@@ -270,11 +270,10 @@ public struct RichEditorToolbar: View {
     private func icon(_ symbol: String, _ label: String, isActive: Bool = false, enabled: Bool = true,
                       action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            ToolbarIcon(systemName: symbol, isActive: isActive, accent: accent)
+            ToolbarIcon(systemName: symbol, isActive: isActive, isEnabled: enabled, accent: accent)
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.35)
         .accessibilityLabel(label)
         .accessibilityAddTraits(isActive ? .isSelected : [])
     }
@@ -283,13 +282,21 @@ public struct RichEditorToolbar: View {
 private struct ToolbarIcon: View {
     let systemName: String
     let isActive: Bool
+    var isEnabled = true
     let accent: Color
+
+    /// Disabled is a color, not opacity: the glass bar re-renders its content
+    /// while pressed, which made opacity-dimmed icons look enabled.
+    private var color: Color {
+        if !isEnabled { return Color(uiColor: .tertiaryLabel) }
+        return isActive ? accent : Color.primary
+    }
 
     var body: some View {
         Image(systemName: systemName)
             .font(.system(size: 17, weight: .medium))
             .frame(width: 42, height: 40)
-            .foregroundStyle(isActive ? accent : Color.primary)
+            .foregroundStyle(color)
             .background(isActive ? accent.opacity(0.15) : Color.clear, in: Capsule())
             .contentShape(Rectangle())
     }
@@ -299,7 +306,9 @@ extension View {
     @ViewBuilder
     func richGlassCapsule() -> some View {
         if #available(iOS 26.0, *) {
-            self.glassEffect(.regular.interactive(), in: .capsule)
+            // Not `.interactive()`: the buttons give their own feedback, and the
+            // bar-wide press effect also brightened disabled icons.
+            self.glassEffect(.regular, in: .capsule)
         } else {
             self
                 .background(.regularMaterial, in: Capsule())
