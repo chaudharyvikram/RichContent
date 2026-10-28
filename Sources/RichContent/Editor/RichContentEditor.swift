@@ -13,11 +13,17 @@ import UIKit
 /// ```
 /// Pass `isScrollEnabled: false` to put the editor inside your own
 /// `ScrollView`; it then grows with its content.
+///
+/// With `controller.quotedOriginal` set, the editor grows with its text and
+/// the quoted original is stacked below it in one scroll view (Mail-style):
+/// typing and focusing only scroll as far as the caret.
 public struct RichContentEditor: View {
     @ObservedObject private var controller: RichEditorController
     private let placeholder: String
     private let isScrollEnabled: Bool
     @Environment(\.richContentStyle) private var style
+    @Environment(\.openURL) private var openURL
+    @State private var editorHeight: CGFloat = 0
 
     public init(controller: RichEditorController, placeholder: String = "", isScrollEnabled: Bool = true) {
         self.controller = controller
@@ -26,8 +32,38 @@ public struct RichContentEditor: View {
     }
 
     public var body: some View {
-        RichEditorRepresentable(controller: controller, style: style,
-                                placeholder: placeholder, isScrollEnabled: isScrollEnabled)
+        if let quoted = controller.quotedOriginal {
+            if isScrollEnabled {
+                ScrollView { editorWithQuote(quoted) }
+                    .scrollDismissesKeyboard(.interactively)
+            } else {
+                editorWithQuote(quoted)
+            }
+        } else {
+            editor(scrolls: isScrollEnabled)
+        }
+    }
+
+    private func editor(scrolls: Bool) -> some View {
+        RichEditorRepresentable(controller: controller, style: style, placeholder: placeholder,
+                                isScrollEnabled: scrolls, onContentHeightChange: { editorHeight = $0 })
+            .frame(height: scrolls ? nil : max(editorHeight, 120))
+    }
+
+    private func editorWithQuote(_ quoted: QuotedOriginal) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            editor(scrolls: false)
+                .zIndex(1)   // its "/" menu / selection toolbar draw over the quote
+            EditorQuotedOriginalView(
+                quoted: quoted, style: style,
+                openURL: { url in
+                    if let open = controller.onOpenURL { open(url) } else { openURL(url) }
+                },
+                onHeightChange: { _ in })
+                .padding(.horizontal, RichEditorTextView.sideInset(
+                    for: style, showsHandles: controller.configuration.showsBlockHandles))
+                .padding(.bottom, 24)
+        }
     }
 }
 
@@ -36,19 +72,28 @@ private struct RichEditorRepresentable: UIViewRepresentable {
     let style: RichContentStyle
     let placeholder: String
     let isScrollEnabled: Bool
+    let onContentHeightChange: (CGFloat) -> Void
 
     func makeUIView(context: Context) -> RichEditorTextView {
         let textView = RichEditorTextView()
         textView.isScrollEnabled = isScrollEnabled
         textView.placeholder = placeholder
+        // RichContentEditor shows the quoted original itself, below the editor.
+        textView.showsQuotedOriginal = false
+        textView.onContentHeightChange = onContentHeightChange
         controller.attach(textView, style: style)
         return textView
     }
 
     func updateUIView(_ textView: RichEditorTextView, context: Context) {
         controller.updateStyle(style)
+        textView.onContentHeightChange = onContentHeightChange
         if textView.placeholder != placeholder { textView.placeholder = placeholder }
         if textView.isScrollEnabled != isScrollEnabled { textView.isScrollEnabled = isScrollEnabled }
+    }
+
+    static func dismantleUIView(_ textView: RichEditorTextView, coordinator: ()) {
+        textView.editorController?.detach(textView)
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: RichEditorTextView, context: Context) -> CGSize? {

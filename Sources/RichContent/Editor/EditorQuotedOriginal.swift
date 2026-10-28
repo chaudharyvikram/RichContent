@@ -83,7 +83,7 @@ extension RichEditorTextView {
 
     /// Shows, updates or removes the quoted original from the controller.
     func quotedOriginalDidChange() {
-        guard let controller = editorController, let quoted = controller.quotedOriginal else {
+        guard showsQuotedOriginal, let controller = editorController, let quoted = controller.quotedOriginal else {
             quotedHost?.view.removeFromSuperview()
             quotedHost = nil
             quotedHeight = 0

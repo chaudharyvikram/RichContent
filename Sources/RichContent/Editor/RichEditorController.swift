@@ -110,7 +110,7 @@ public final class RichEditorController: NSObject, ObservableObject {
     /// The message being replied to, shown read-only below the text like the
     /// quoted original in Mail and Gmail: it scrolls with the reply, can't be
     /// edited, and `replyHTML()` sends it. `nil` shows nothing.
-    public var quotedOriginal: QuotedOriginal? {
+    @Published public var quotedOriginal: QuotedOriginal? {
         didSet { if quotedOriginal != oldValue { textView?.quotedOriginalDidChange() } }
     }
 
@@ -197,6 +197,13 @@ public final class RichEditorController: NSObject, ObservableObject {
     // MARK: - Attaching
 
     func attach(_ tv: RichEditorTextView, style: RichContentStyle) {
+        // A new text view replacing a live one (SwiftUI switching layouts):
+        // carry the document over.
+        if let old = textView, old !== tv, pendingDocument == nil {
+            pendingDocument = NSAttributedString(attributedString: old.textStorage)
+            old.delegate = nil
+            old.editorController = nil
+        }
         self.style = style
         textView = tv
         tv.delegate = self
@@ -210,6 +217,17 @@ public final class RichEditorController: NSObject, ObservableObject {
         }
         syncTypingAttributes()
         contentDidChange()
+    }
+
+    /// The text view is going away (SwiftUI dismantled it): keep the document
+    /// so `html` still works and a new text view picks it up.
+    func detach(_ tv: RichEditorTextView) {
+        guard textView === tv else { return }
+        pendingDocument = NSAttributedString(attributedString: tv.textStorage)
+        tv.delegate = nil
+        tv.editorController = nil
+        textView = nil
+        isFocused = false
     }
 
     func updateStyle(_ newStyle: RichContentStyle) {
@@ -443,6 +461,8 @@ public final class RichEditorController: NSObject, ObservableObject {
         refreshState()
         updateImageUploadStates()
         tv.updateOverlays()
+        tv.reportContentHeight()
+        tv.revealCaretInEnclosingScrollView()
         onChange?(self)
     }
 

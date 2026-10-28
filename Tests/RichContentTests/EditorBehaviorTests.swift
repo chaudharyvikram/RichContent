@@ -438,6 +438,30 @@ final class EditorBehaviorTests: XCTestCase {
         XCTAssertTrue(editor.allImagesUploaded)
     }
 
+    func testReplacingOrRemovingTheTextViewKeepsTheDocument() {
+        type("Hello")
+        // SwiftUI switching layouts: a new text view while the old one is alive.
+        let replacement = RichEditorTextView()
+        editor.attach(to: replacement)
+        XCTAssertEqual(replacement.textStorage.string, "Hello")
+        // SwiftUI dismantling it: the document stays readable and moves on.
+        editor.detach(replacement)
+        XCTAssertTrue(editor.html.contains("Hello"))
+        let next = RichEditorTextView()
+        editor.attach(to: next)
+        XCTAssertEqual(next.textStorage.string, "Hello")
+    }
+
+    func testRichContentEditorTextViewLeavesTheQuoteToSwiftUI() {
+        let hosted = RichEditorTextView()
+        hosted.showsQuotedOriginal = false
+        let controller = RichEditorController()
+        controller.attach(to: hosted)
+        controller.quotedOriginal = QuotedOriginal(.plain("Original"), attribution: "Alex wrote:")
+        XCTAssertNil(hosted.quotedHost)
+        XCTAssertTrue(controller.replyHTML().contains("Original"))
+    }
+
     func testQuotedOriginalIsShownButNotEditableAndIsSent() {
         type("Sounds good")
         XCTAssertEqual(editor.replyHTML(), editor.html)

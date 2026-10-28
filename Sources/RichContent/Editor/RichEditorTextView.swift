@@ -44,16 +44,34 @@ public final class RichEditorTextView: UITextView {
     public var minimumHeight: CGFloat = 120
 
     /// Width the block handle needs left of a block's text.
-    private let handleWidth: CGFloat = 28
+    private let handleWidth: CGFloat = RichEditorTextView.handleWidth
+    static let handleWidth: CGFloat = 28
 
     /// Left and right margin: `editorHorizontalPadding` when set, else the
     /// style's padding, widened (on both sides, so blocks stay centred) when
     /// the block handle needs room.
     private func sideInset(_ style: RichContentStyle) -> CGFloat {
+        Self.sideInset(for: style, showsHandles: editorController?.configuration.showsBlockHandles ?? true)
+    }
+
+    static func sideInset(for style: RichContentStyle, showsHandles: Bool) -> CGFloat {
         if let padding = style.editorHorizontalPadding { return max(padding, 0) }
-        let showsHandles = editorController?.configuration.showsBlockHandles ?? true
         return showsHandles ? max(style.horizontalPadding, handleWidth + 2) : style.horizontalPadding
     }
+
+    // Growing with its content (inside a host scroll view), the "/" menu and
+    // the selection toolbar may extend past the bottom edge: don't clip them.
+    public override var isScrollEnabled: Bool {
+        didSet { clipsToBounds = isScrollEnabled }
+    }
+
+    /// `false` when the host shows the quoted original itself (SwiftUI's
+    /// `RichContentEditor` stacks it below a non-scrolling editor).
+    var showsQuotedOriginal = true
+
+    /// Non-scrolling editor: called when the height its text needs changes.
+    var onContentHeightChange: ((CGFloat) -> Void)?
+    private var reportedContentHeight: CGFloat = 0
 
     public init() {
         let (storage, layoutManager, container) = TextKitStack.make(EditorLayoutManager())
@@ -92,6 +110,9 @@ public final class RichEditorTextView: UITextView {
 
         markerTap = UITapGestureRecognizer(target: self, action: #selector(handleMarkerTap(_:)))
         addGestureRecognizer(markerTap)
+
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardDidShow),
+                                               name: UIResponder.keyboardDidShowNotification, object: nil)
 
         layoutManager.focus = { [weak self] in self?.focusInfo() }
         layoutManager.trailingLineInfo = { [weak self] in self?.editorController?.trailingInfo ?? BlockInfo() }
@@ -144,7 +165,34 @@ public final class RichEditorTextView: UITextView {
         let size = placeholderLabel.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
         placeholderLabel.frame = CGRect(x: inset.left, y: inset.top, width: width, height: size.height)
         layoutQuotedOriginal()
+        reportContentHeight()
         updateOverlays()
+    }
+
+    // MARK: Growing inside the host's scroll view
+
+    /// Tells `onContentHeightChange` the height the text needs at the current width.
+    func reportContentHeight() {
+        guard !isScrollEnabled, let report = onContentHeightChange, bounds.width > 0 else { return }
+        let height = ceil(sizeThatFits(CGSize(width: bounds.width, height: .greatestFiniteMagnitude)).height)
+        guard abs(height - reportedContentHeight) > 0.5 else { return }
+        reportedContentHeight = height
+        DispatchQueue.main.async { report(height) }   // not during a SwiftUI update
+    }
+
+    /// Non-scrolling editor: scrolls the enclosing scroll view just enough to
+    /// show the caret (never to the end of the document).
+    func revealCaretInEnclosingScrollView() {
+        guard !isScrollEnabled, isFirstResponder, let caret = selectedTextRange?.end else { return }
+        var view = superview
+        while let candidate = view, !((candidate as? UIScrollView)?.isScrollEnabled ?? false) { view = candidate.superview }
+        guard let scrollView = view as? UIScrollView else { return }
+        let rect = convert(caretRect(for: caret).insetBy(dx: 0, dy: -12), to: scrollView)
+        scrollView.scrollRectToVisible(rect, animated: false)
+    }
+
+    @objc private func keyboardDidShow() {
+        revealCaretInEnclosingScrollView()
     }
 
     private func focusInfo() -> EditorLayoutManager.Focus? {
