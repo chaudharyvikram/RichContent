@@ -36,9 +36,8 @@ xcodebuild -project Demo/RichContentDemo.xcodeproj -scheme RichContentDemo -dest
 
 ## Your own content
 
-Paste a server response, exactly as received, into
-`Demo/RichContentDemo/htmlcontent.html` (ignored by git, so it stays on
-your machine). It appears as the **HTML** note and Viewer sample,
-passed unchanged to `.auto`, which handles HTML, Markdown, a mix of both, and
-JSON-escaped strings. If you ran the demo before adding the file, the note
-is added on the next launch.
+Put your own HTML / Markdown files (emails, API responses, as received) in
+`Demo/RichContentDemo/LocalContent/`. Each file becomes a note and a Viewer
+sample titled with its file name, passed unchanged to `.auto`. Git ignores
+the folder's files, so they stay on your machine; see
+[`LocalContent/README.md`](RichContentDemo/LocalContent/README.md).

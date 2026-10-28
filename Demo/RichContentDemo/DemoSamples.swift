@@ -95,11 +95,11 @@ enum DemoSamples {
         func hash(into hasher: inout Hasher) { hasher.combine(id) }
     }
 
-    /// The built-in samples, plus your local `htmlcontent.html` when present.
+    /// The built-in samples, plus one per file in `LocalContent/`.
     static var viewerSamples: [ViewerSample] {
-        builtInViewerSamples + (htmlContent.map {
-            [ViewerSample(id: "htmlcontent", title: "HTML", subtitle: "Your htmlcontent.html, as one plain string", content: .auto($0))]
-        } ?? [])
+        builtInViewerSamples + LocalSample.all.map {
+            ViewerSample(id: "local-" + $0.fileName, title: $0.title, subtitle: "LocalContent/\($0.fileName)", content: .auto($0.content))
+        }
     }
 
     private static let builtInViewerSamples: [ViewerSample] = [

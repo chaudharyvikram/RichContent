@@ -23,42 +23,45 @@ final class NotesStore: ObservableObject {
     init() {
         if let data = try? Data(contentsOf: url), let saved = try? JSONDecoder().decode([Note].self, from: data), !saved.isEmpty {
             notes = saved
-            addHTMLContentOnce()
+            addNewLocalNotes()
         } else {
             resetSamples()
         }
         notes.forEach(summarize)
     }
 
-    /// The "HTML" note, from your local `htmlcontent.html`. The content is
-    /// passed unchanged; `.auto` works out HTML, Markdown or a mix.
-    private static func htmlContentNote(updated: Date) -> Note? {
-        guard let content = DemoSamples.htmlContent else { return nil }
-        return Note(html: RichEditorController(content: .auto(content)).html, updated: updated, title: "HTML")
+    /// A note per file in `LocalContent/`, titled with the file name. The
+    /// content is passed unchanged; `.auto` works out HTML, Markdown or a mix.
+    private static func localNote(_ sample: LocalSample, updated: Date) -> Note {
+        Note(html: RichEditorController(content: .auto(sample.content)).html, updated: updated, title: sample.title)
     }
 
-    private static let htmlContentKey = "addedHTMLContentNote"
+    /// File names already turned into notes, so each is added once and
+    /// deleting its note sticks.
+    private static let addedLocalFilesKey = "addedLocalContentFiles"
+    private var addedLocalFiles: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: Self.addedLocalFilesKey) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: Self.addedLocalFilesKey) }
+    }
 
-    /// Adds the "HTML" note to notes saved before the file existed (once, so
-    /// deleting it sticks).
-    private func addHTMLContentOnce() {
-        guard !UserDefaults.standard.bool(forKey: Self.htmlContentKey),
-              let note = Self.htmlContentNote(updated: Date()) else { return }
-        UserDefaults.standard.set(true, forKey: Self.htmlContentKey)
-        notes.insert(note, at: 0)
+    /// Adds notes for files added to `LocalContent/` since the last launch.
+    private func addNewLocalNotes() {
+        let added = addedLocalFiles
+        let new = LocalSample.all.filter { !added.contains($0.fileName) }
+        guard !new.isEmpty else { return }
+        notes.insert(contentsOf: new.map { Self.localNote($0, updated: Date()) }, at: 0)
+        addedLocalFiles = added.union(new.map(\.fileName))
         save()
     }
 
     func resetSamples() {
         let now = Date()
-        notes = [
-            Note(html: DemoSamples.welcome, updated: now),
-            Self.htmlContentNote(updated: now.addingTimeInterval(-60)),
-            Note(html: DemoSamples.meeting, updated: now.addingTimeInterval(-3600)),
-            Note(html: RichEditorController(content: .markdown(DemoSamples.markdownNote)).html, updated: now.addingTimeInterval(-86400))
-        ].compactMap { $0 }
+        notes = [Note(html: DemoSamples.welcome, updated: now)]
+            + LocalSample.all.map { Self.localNote($0, updated: now.addingTimeInterval(-60)) }
+            + [Note(html: DemoSamples.meeting, updated: now.addingTimeInterval(-3600)),
+               Note(html: RichEditorController(content: .markdown(DemoSamples.markdownNote)).html, updated: now.addingTimeInterval(-86400))]
         notes.forEach(summarize)
-        if notes.contains(where: { $0.title != nil }) { UserDefaults.standard.set(true, forKey: Self.htmlContentKey) }
+        addedLocalFiles = Set(LocalSample.all.map(\.fileName))
         save()
     }
 
