@@ -21,20 +21,40 @@ final class NotesStore: ObservableObject {
     init() {
         if let data = try? Data(contentsOf: url), let saved = try? JSONDecoder().decode([Note].self, from: data), !saved.isEmpty {
             notes = saved
+            addNewsletterOnce()
         } else {
             resetSamples()
         }
         notes.forEach(summarize)
     }
 
+    /// The "Notion Block" note: a real marketing email imported into the editor.
+    private static func newsletterNote(updated: Date) -> Note {
+        let html = "<h1>Notion Block</h1>" + DemoSamples.notionNewsletter
+        return Note(html: RichEditorController(content: .html(html)).html, updated: updated)
+    }
+
+    private static let newsletterKey = "addedNotionNewsletterNote"
+
+    /// Adds the newsletter note to notes saved before it existed (once, so
+    /// deleting it sticks).
+    private func addNewsletterOnce() {
+        guard !UserDefaults.standard.bool(forKey: Self.newsletterKey) else { return }
+        UserDefaults.standard.set(true, forKey: Self.newsletterKey)
+        notes.insert(Self.newsletterNote(updated: Date()), at: 0)
+        save()
+    }
+
     func resetSamples() {
         let now = Date()
         notes = [
             Note(html: DemoSamples.welcome, updated: now),
+            Self.newsletterNote(updated: now.addingTimeInterval(-60)),
             Note(html: DemoSamples.meeting, updated: now.addingTimeInterval(-3600)),
             Note(html: RichEditorController(content: .markdown(DemoSamples.markdownNote)).html, updated: now.addingTimeInterval(-86400))
         ]
         notes.forEach(summarize)
+        UserDefaults.standard.set(true, forKey: Self.newsletterKey)
         save()
     }
 

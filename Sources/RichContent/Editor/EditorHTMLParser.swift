@@ -80,11 +80,22 @@ enum EditorHTMLParser {
 
             let attrs = parseAttributes(match.range(at: 3).location == NSNotFound ? "" : ns.substring(with: match.range(at: 3)))
             let node = Node(name: name, attributes: attrs)
-            append(node)
+            // Hidden elements (email preheaders, tracking pixels) stay out of
+            // the tree; their content still parses, into the detached node.
+            if !isHidden(attrs) { append(node) }
             if !voidElements.contains(name) && !selfClosing { stack.append(node) }
         }
         return root
     }
+
+    private static func isHidden(_ attributes: [String: String]) -> Bool {
+        if attributes["hidden"] != nil { return true }
+        guard let style = attributes["style"] else { return false }
+        return hiddenStyle.firstMatch(in: style, range: NSRange(location: 0, length: (style as NSString).length)) != nil
+    }
+
+    private static let hiddenStyle = try! NSRegularExpression(
+        pattern: #"(?:^|;)\s*(?:display\s*:\s*none|mso-hide\s*:\s*all)\b"#, options: [.caseInsensitive])
 
     private static func parseAttributes(_ source: String) -> [String: String] {
         var result: [String: String] = [:]
