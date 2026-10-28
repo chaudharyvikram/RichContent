@@ -185,24 +185,29 @@ public struct RichEditorToolbar: View {
     /// Text colors and Background colors, both expanded: color picker, the
     /// app's asset colors, then the built-in palette.
     private var colorMenu: some View {
-        let colors = controller.configuration.assetColors + RichColor.allCases
+        let assets = controller.configuration.assetColors
         return Menu {
             Section("Text colors") {
                 Button { controller.presentColorPicker(background: false) } label: {
                     Label("Choose from color picker…", systemImage: "eyedropper")
                 }
-                textButtons(colors)
+                Divider()
+                if !assets.isEmpty {
+                    textButtons(assets)
+                    Divider()
+                }
+                textButtons(RichColor.allCases)
             }
             Section("Background colors") {
                 Button { controller.presentColorPicker(background: true) } label: {
                     Label("Choose from color picker…", systemImage: "eyedropper")
                 }
-                ForEach(colors, id: \.self) { color in
-                    Button { controller.setHighlight(color) } label: {
-                        Label { Text(color == .default ? "Default background" : "\(color.title) background") }
-                            icon: { Image(uiImage: EditorMenus.swatch(color, background: true)) }
-                    }
+                Divider()
+                if !assets.isEmpty {
+                    backgroundButtons(assets)
+                    Divider()
                 }
+                backgroundButtons(RichColor.allCases)
             }
         } label: {
             ToolbarIcon(systemName: "paintpalette", isActive: controller.textColor != .default || controller.highlight != .default,
@@ -215,6 +220,15 @@ public struct RichEditorToolbar: View {
         ForEach(colors, id: \.self) { color in
             Button { controller.setTextColor(color) } label: {
                 Label { Text(color.title) } icon: { Image(uiImage: EditorMenus.swatch(color, background: false)) }
+            }
+        }
+    }
+
+    private func backgroundButtons(_ colors: [RichColor]) -> some View {
+        ForEach(colors, id: \.self) { color in
+            Button { controller.setHighlight(color) } label: {
+                Label { Text(color == .default ? "Default background" : "\(color.title) background") }
+                    icon: { Image(uiImage: EditorMenus.swatch(color, background: true)) }
             }
         }
     }

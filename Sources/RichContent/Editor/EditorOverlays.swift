@@ -37,10 +37,17 @@ enum EditorMenus {
                 controller.presentColorPicker(background: background, wholeBlock: wholeBlock)
             }
         }
-        let colors = controller.configuration.assetColors + RichColor.allCases
+        // Inline groups get separators: picker | asset colors | built-in palette.
+        func section(_ title: String, background isBackground: Bool, _ item: (RichColor) -> UIAction) -> UIMenu {
+            let groups = [[picker(background: isBackground)],
+                          controller.configuration.assetColors.map(item),
+                          RichColor.allCases.map(item)]
+            return UIMenu(title: title, options: .displayInline,
+                          children: groups.filter { !$0.isEmpty }.map { UIMenu(options: .displayInline, children: $0) })
+        }
         return UIMenu(title: "Color", image: UIImage(systemName: "paintpalette"), children: [
-            UIMenu(title: "Text colors", options: .displayInline, children: [picker(background: false)] + colors.map(text)),
-            UIMenu(title: "Background colors", options: .displayInline, children: [picker(background: true)] + colors.map(background))
+            section("Text colors", background: false, text),
+            section("Background colors", background: true, background)
         ])
     }
 
