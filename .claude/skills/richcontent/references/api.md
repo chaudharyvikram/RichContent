@@ -60,7 +60,18 @@ RichContentRenderer.immediateBlocks(for:style:) -> [RenderedBlock]?     // nil w
 ## RichContentStyle (value type, `Hashable`)
 
 Presets: `.standard`, `.email` (16 pt body, padding 16×8, compact spacing).
-Helpers: `style.padding(horizontal:vertical:)`, `style.font(_:relativeTo:)` (Dynamic Type scaled).
+Helpers: `style.padding(horizontal:vertical:)`, `style.font(_:relativeTo:)` (returns a copy),
+`style.setFont(_:relativeTo:scalesWithDynamicType:)`, `style.setCodeFont(_:relativeTo:scalesWithDynamicType:)`.
+Assigning `style.font` directly gives a fixed size; use `setFont` so custom fonts follow Dynamic Type.
+
+Notes:
+- A custom (non-system) font is embedded into web-rendered HTML as `@font-face`
+  data (cached per font). For SF Pro use `.systemFont(ofSize:)`, which maps to
+  `-apple-system` with nothing embedded.
+- `lineSpacing` applies to natively rendered text only; web-rendered HTML uses
+  `line-height: 1.4`. Keep `lineSpacing` small (≈2–4) so both look alike.
+- Colors are resolved for light and dark separately for the web view; use
+  dynamic colors (asset colors with a dark appearance, system colors).
 
 | Group | Fields |
 |---|---|
