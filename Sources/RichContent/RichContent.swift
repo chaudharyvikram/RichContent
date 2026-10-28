@@ -79,8 +79,10 @@ public enum JSONEscapedHTML {
         guard string.contains("\\"), isEscaped(string) else { return string }
 
         // A fully escaped string decodes as a JSON string literal
-        // (handles \" \/ \\ \n \t \uXXXX in one go).
-        if let data = "\"\(string)\"".data(using: .utf8),
+        // (handles \" \/ \\ \n \t \uXXXX in one go). Raw whitespace around
+        // it (a trailing newline from a file or response) isn't part of it.
+        let literal = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let data = "\"\(literal)\"".data(using: .utf8),
            let decoded = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) as? String {
             return decoded
         }

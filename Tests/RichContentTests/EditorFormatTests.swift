@@ -223,6 +223,14 @@ final class EditorFormatTests: XCTestCase {
                        ["bulletList@1: One", "bulletList@1: Two"])
     }
 
+    func testJSONEscapedEmailWithTrailingNewlineDecodesFully() {
+        // As read from a file / response: CRLF and \u escapes, plus a raw trailing newline.
+        let raw = #"<div style=\"display: none\">Preview  ͏</div>\r\n<p style=\"margin: 0;\">Hi ’ there<\/p>"# + "\n"
+        XCTAssertEqual(JSONEscapedHTML.unescapeIfNeeded(raw),
+                       "<div style=\"display: none\">Preview \u{2007}\u{034F}</div>\r\n<p style=\"margin: 0;\">Hi \u{2019} there</p>")
+        XCTAssertEqual(Self.describe(EditorImporter.blocks(from: .auto(raw))), ["paragraph@1: Hi \u{2019} there"])
+    }
+
     // MARK: Markdown
 
     func testMarkdownImport() {
