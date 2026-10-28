@@ -17,15 +17,30 @@ struct ViewerView: View {
             .navigationDestination(for: DemoSamples.ViewerSample.self) { sample in
                 ScrollView {
                     RichContentView(sample.content)
-                        .richContentStyle(.email)
+                        .richContentStyle(style)
                 }
                 .navigationTitle(sample.title)
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    // Remote images are blocked by default, like Mail (no tracking pixels).
+                    Toggle(isOn: $loadsRemoteImages) {
+                        Label("Load remote images", systemImage: "photo")
+                    }
+                    .toggleStyle(.button)
+                }
                 .environment(\.openURL, OpenURLAction { url in
                     print("Link tapped: \(url)")
                     return .systemAction
                 })
             }
         }
+    }
+
+    @State private var loadsRemoteImages = false
+
+    private var style: RichContentStyle {
+        var style = RichContentStyle.email
+        style.allowsRemoteContent = loadsRemoteImages
+        return style
     }
 }
