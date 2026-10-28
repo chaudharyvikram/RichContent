@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import RichContent
 
@@ -8,6 +9,8 @@ struct Note: Identifiable, Codable, Hashable {
     var updated = Date()
     /// Shown in the list instead of the first line of the text.
     var title: String?
+    /// The `LocalContent/` file this note mirrors, if any.
+    var source: String?
 }
 
 /// Notes saved as JSON in Documents. Seeded with the demo notes.
@@ -23,7 +26,7 @@ final class NotesStore: ObservableObject {
     init() {
         if let data = try? Data(contentsOf: url), let saved = try? JSONDecoder().decode([Note].self, from: data), !saved.isEmpty {
             notes = saved
-            addNewLocalNotes()
+            syncLocalNotes()
         } else {
             resetSamples()
         }
@@ -33,24 +36,47 @@ final class NotesStore: ObservableObject {
     /// A note per file in `LocalContent/`, titled with the file name. The
     /// content is passed unchanged; `.auto` works out HTML, Markdown or a mix.
     private static func localNote(_ sample: LocalSample, updated: Date) -> Note {
-        Note(html: RichEditorController(content: .auto(sample.content)).html, updated: updated, title: sample.title)
+        Note(html: RichEditorController(content: .auto(sample.content)).html, updated: updated,
+             title: sample.title, source: sample.fileName)
     }
 
-    /// File names already turned into notes, so each is added once and
-    /// deleting its note sticks.
-    private static let addedLocalFilesKey = "addedLocalContentFiles"
-    private var addedLocalFiles: Set<String> {
-        get { Set(UserDefaults.standard.stringArray(forKey: Self.addedLocalFilesKey) ?? []) }
-        set { UserDefaults.standard.set(Array(newValue), forKey: Self.addedLocalFilesKey) }
+    /// Fingerprint of each file's content at its last import, by file name.
+    private static let localDigestsKey = "localContentDigests"
+    private var localDigests: [String: String] {
+        get { UserDefaults.standard.dictionary(forKey: Self.localDigestsKey) as? [String: String] ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: Self.localDigestsKey) }
     }
 
-    /// Adds notes for files added to `LocalContent/` since the last launch.
-    private func addNewLocalNotes() {
-        let added = addedLocalFiles
-        let new = LocalSample.all.filter { !added.contains($0.fileName) }
-        guard !new.isEmpty else { return }
-        notes.insert(contentsOf: new.map { Self.localNote($0, updated: Date()) }, at: 0)
-        addedLocalFiles = added.union(new.map(\.fileName))
+    private static func digest(_ content: String) -> String {
+        SHA256.hash(data: Data(content.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// The files are the source of truth: a note is added for a new file, and
+    /// replaced when its file changed since the last launch. A deleted note
+    /// stays deleted until its file changes.
+    private func syncLocalNotes() {
+        var digests = localDigests
+        var changed = false
+        for sample in LocalSample.all {
+            let digest = Self.digest(sample.content)
+            defer { digests[sample.fileName] = digest }
+            guard digests[sample.fileName] != digest else { continue }
+            let note = Self.localNote(sample, updated: Date())
+            // Notes from earlier builds have no source; match them by title.
+            if let index = notes.firstIndex(where: { $0.source == sample.fileName })
+                ?? notes.firstIndex(where: { $0.source == nil && $0.title == sample.title }) {
+                notes[index].html = note.html
+                notes[index].updated = note.updated
+                notes[index].title = note.title
+                notes[index].source = note.source
+            } else {
+                notes.append(note)
+            }
+            changed = true
+        }
+        localDigests = digests
+        guard changed else { return }
+        notes.sort { $0.updated > $1.updated }
         save()
     }
 
@@ -61,7 +87,7 @@ final class NotesStore: ObservableObject {
             + [Note(html: DemoSamples.meeting, updated: now.addingTimeInterval(-3600)),
                Note(html: RichEditorController(content: .markdown(DemoSamples.markdownNote)).html, updated: now.addingTimeInterval(-86400))]
         notes.forEach(summarize)
-        addedLocalFiles = Set(LocalSample.all.map(\.fileName))
+        localDigests = Dictionary(LocalSample.all.map { ($0.fileName, Self.digest($0.content)) }, uniquingKeysWith: { a, _ in a })
         save()
     }
 

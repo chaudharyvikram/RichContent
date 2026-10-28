@@ -25,8 +25,8 @@ git update-index --skip-worktree Demo/RichContentDemo/LocalContent/htmlcontent.h
 
 Undo with `--no-skip-worktree`.
 
-## Notes
+## Updating a file
 
-- Notes are created once per file name. To re-import a changed file, delete
-  its note and use "…" → Restore Sample Notes, or rename the file.
-- Viewer always shows the file's current contents.
+The files are the source of truth. Edit a file and run the app again: its
+note and Viewer sample show the new content (edits made to that note in the
+app are replaced). Deleting a note hides it until its file changes again.
