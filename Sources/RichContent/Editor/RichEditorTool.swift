@@ -1,4 +1,4 @@
-import Foundation
+import UIKit
 
 /// A button in the format bar (`RichEditorToolbar` / `.richEditorToolbar`).
 /// Pass the ones to show, in order, to `RichEditorConfiguration.toolbarTools`
@@ -55,6 +55,53 @@ public enum RichEditorTool: String, Hashable, CaseIterable, Sendable {
         case .numberedList: return .numberedList
         case .toggle: return .toggle
         default: return nil
+        }
+    }
+}
+
+/// A format-bar icon: an SF Symbol, an image from an asset catalog, or a
+/// `UIImage`. Images are drawn as templates (tinted like the built-in icons).
+public enum RichEditorToolIcon: Hashable {
+    case system(String)
+    case asset(String, bundle: Bundle? = nil)
+    case image(UIImage)
+}
+
+public extension RichEditorTool {
+    /// The built-in icon (override with `RichEditorConfiguration.toolbarIcons`).
+    var defaultIcon: RichEditorToolIcon {
+        switch self {
+        case .addBlock: return .system("plus")
+        case .turnInto: return .system("textformat")
+        case .bold, .italic, .underline, .strikethrough, .code: return .system(inlineFormat!.symbolName)
+        case .link: return .system("link")
+        case .color: return .system("paintpalette")
+        case .todo, .bulletList, .numberedList, .toggle: return .system(blockType!.symbolName)
+        case .outdent: return .system("decrease.indent")
+        case .indent: return .system("increase.indent")
+        case .image: return .system("photo")
+        case .undo: return .system("arrow.uturn.backward")
+        case .redo: return .system("arrow.uturn.forward")
+        case .hideKeyboard: return .system("keyboard.chevron.compact.down")
+        }
+    }
+
+    /// The built-in name, used for VoiceOver and the long-press tooltip
+    /// (override with `RichEditorConfiguration.toolbarLabels`).
+    var defaultLabel: String {
+        switch self {
+        case .addBlock: return "Add block"
+        case .turnInto: return "Turn into"
+        case .bold, .italic, .underline, .strikethrough, .code: return inlineFormat!.title
+        case .link: return "Link"
+        case .color: return "Color"
+        case .todo, .bulletList, .numberedList, .toggle: return blockType!.title
+        case .outdent: return "Outdent"
+        case .indent: return "Indent"
+        case .image: return "Image"
+        case .undo: return "Undo"
+        case .redo: return "Redo"
+        case .hideKeyboard: return "Hide keyboard"
         }
     }
 }

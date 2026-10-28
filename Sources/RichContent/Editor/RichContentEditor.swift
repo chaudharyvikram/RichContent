@@ -173,7 +173,7 @@ public struct RichEditorToolbar: View {
             if controller.isFocused, requested.contains(.hideKeyboard) {
                 // Pinned outside the scrolling tools, always one tap away.
                 divider
-                icon("keyboard.chevron.compact.down", "Hide keyboard") { controller.resignFocus() }
+                icon(.hideKeyboard) { controller.resignFocus() }
                     .padding(.trailing, 6)
             }
         }
@@ -203,31 +203,29 @@ public struct RichEditorToolbar: View {
     private func button(for tool: RichEditorTool) -> some View {
         switch tool {
         case .addBlock:
-            icon("plus", "Add block") { controller.showCommandMenu() }
+            icon(tool) { controller.showCommandMenu() }
         case .turnInto:
             turnIntoMenu
         case .bold, .italic, .underline, .strikethrough, .code:
             let format = tool.inlineFormat!
-            icon(format.symbolName, format.title, isActive: controller.activeFormats.contains(format)) {
-                controller.toggle(format)
-            }
+            icon(tool, isActive: controller.activeFormats.contains(format)) { controller.toggle(format) }
         case .link:
-            icon("link", "Link", isActive: controller.activeFormats.contains(.link)) { controller.beginLinkEditing() }
+            icon(tool, isActive: controller.activeFormats.contains(.link)) { controller.beginLinkEditing() }
         case .color:
             colorMenu
         case .todo, .bulletList, .numberedList, .toggle:
             let type = tool.blockType!
-            icon(type.symbolName, type.title, isActive: controller.blockType == type) { controller.toggleBlock(type) }
+            icon(tool, isActive: controller.blockType == type) { controller.toggleBlock(type) }
         case .outdent:
-            icon("decrease.indent", "Outdent", enabled: controller.canOutdent) { controller.outdent() }
+            icon(tool, enabled: controller.canOutdent) { controller.outdent() }
         case .indent:
-            icon("increase.indent", "Indent", enabled: controller.canIndent) { controller.indent() }
+            icon(tool, enabled: controller.canIndent) { controller.indent() }
         case .image:
-            icon("photo", "Image") { controller.textView?.presentImagePicker() }
+            icon(tool) { controller.textView?.presentImagePicker() }
         case .undo:
-            icon("arrow.uturn.backward", "Undo", enabled: controller.canUndo) { controller.undo() }
+            icon(tool, enabled: controller.canUndo) { controller.undo() }
         case .redo:
-            icon("arrow.uturn.forward", "Redo", enabled: controller.canRedo) { controller.redo() }
+            icon(tool, enabled: controller.canRedo) { controller.redo() }
         case .hideKeyboard:
             EmptyView()
         }
@@ -236,6 +234,14 @@ public struct RichEditorToolbar: View {
     // MARK: Pieces
 
     private var accent: Color { Color(uiColor: style.linkColor) }
+
+    private func iconOf(_ tool: RichEditorTool) -> RichEditorToolIcon {
+        controller.configuration.toolbarIcons[tool] ?? tool.defaultIcon
+    }
+
+    private func labelOf(_ tool: RichEditorTool) -> String {
+        controller.configuration.toolbarLabels[tool] ?? tool.defaultLabel
+    }
 
     private var divider: some View {
         Rectangle()
@@ -263,9 +269,10 @@ public struct RichEditorToolbar: View {
                 Button { controller.insertDivider() } label: { Label("Divider", systemImage: RichBlockType.divider.symbolName) }
             }
         } label: {
-            ToolbarIcon(systemName: "textformat", isActive: controller.blockType != .paragraph, accent: accent)
+            ToolbarIcon(icon: iconOf(.turnInto), isActive: controller.blockType != .paragraph, accent: accent)
         }
-        .accessibilityLabel("Turn into, \(controller.blockType.title)")
+        .accessibilityLabel("\(labelOf(.turnInto)), \(controller.blockType.title)")
+        .help(labelOf(.turnInto))
     }
 
     /// Text colors and Background colors, both expanded: color picker, then
@@ -286,10 +293,11 @@ public struct RichEditorToolbar: View {
             }
             Section { backgroundButtons(RichColor.allCases) }
         } label: {
-            ToolbarIcon(systemName: "paintpalette", isActive: controller.textColor != .default || controller.highlight != .default,
+            ToolbarIcon(icon: iconOf(.color), isActive: controller.textColor != .default || controller.highlight != .default,
                         accent: accent)
         }
-        .accessibilityLabel("Color")
+        .accessibilityLabel(labelOf(.color))
+        .help(labelOf(.color))
     }
 
     private func textButtons(_ colors: [RichColor]) -> some View {
@@ -309,20 +317,21 @@ public struct RichEditorToolbar: View {
         }
     }
 
-    private func icon(_ symbol: String, _ label: String, isActive: Bool = false, enabled: Bool = true,
+    private func icon(_ tool: RichEditorTool, isActive: Bool = false, enabled: Bool = true,
                       action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            ToolbarIcon(systemName: symbol, isActive: isActive, isEnabled: enabled, accent: accent)
+            ToolbarIcon(icon: iconOf(tool), isActive: isActive, isEnabled: enabled, accent: accent)
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
-        .accessibilityLabel(label)
+        .accessibilityLabel(labelOf(tool))
         .accessibilityAddTraits(isActive ? .isSelected : [])
+        .help(labelOf(tool))
     }
 }
 
 private struct ToolbarIcon: View {
-    let systemName: String
+    let icon: RichEditorToolIcon
     let isActive: Bool
     var isEnabled = true
     let accent: Color
@@ -334,9 +343,20 @@ private struct ToolbarIcon: View {
         return isActive ? accent : Color.primary
     }
 
+    @ViewBuilder
+    private var image: some View {
+        switch icon {
+        case .system(let name):
+            Image(systemName: name).font(.system(size: 17, weight: .medium))
+        case .asset(let name, let bundle):
+            Image(name, bundle: bundle).renderingMode(.template).resizable().scaledToFit().frame(width: 20, height: 20)
+        case .image(let image):
+            Image(uiImage: image).renderingMode(.template).resizable().scaledToFit().frame(width: 20, height: 20)
+        }
+    }
+
     var body: some View {
-        Image(systemName: systemName)
-            .font(.system(size: 17, weight: .medium))
+        image
             .frame(width: 42, height: 40)
             .foregroundStyle(color)
             .background(isActive ? accent.opacity(0.15) : Color.clear, in: Capsule())

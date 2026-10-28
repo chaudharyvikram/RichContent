@@ -27,6 +27,10 @@ public struct RichEditorConfiguration {
     /// of the configuration rules out (e.g. Image without `.image` in
     /// `allowedBlocks`) are left out.
     public var toolbarTools: [RichEditorTool] = .all
+    /// Replace a format-bar icon, e.g. `[.bold: .system("bold.underline"), .image: .asset("AttachPhoto")]`.
+    public var toolbarIcons: [RichEditorTool: RichEditorToolIcon] = [:]
+    /// Replace a format-bar tool's name (VoiceOver, long-press tooltip), e.g. for localization.
+    public var toolbarLabels: [RichEditorTool: String] = [:]
 
     public init() {}
 
