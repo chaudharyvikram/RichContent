@@ -101,6 +101,10 @@ public final class RichEditorController: NSObject, ObservableObject {
     var trailingInfo = BlockInfo()
     /// Range touched by the change in flight, for normalising afterwards.
     var pendingEditRange: NSRange?
+    /// Text replacing a range (suggestion, autocorrect, dictation, typing over
+    /// a selection) keeps the replaced text's formatting: where it lands and
+    /// the inline formats of the first replaced character.
+    var pendingReplacementStyle: (range: NSRange, inline: InlineInfo)?
     var slash: SlashState?
     var slashPending: Int?
     /// Link taps (from the edit menu's "Open Link" and the quoted original).
@@ -561,11 +565,22 @@ extension RichEditorController: UITextViewDelegate {
         if textView.markedTextRange == nil {
             let range = pendingEditRange ?? NSRange(location: 0, length: s.length)
             let selection = textView.selectedRange
+            if let replacement = pendingReplacementStyle, replacement.range.length > 0,
+               NSMaxRange(replacement.range) <= s.length {
+                // UIKit inserts suggestions with the attributes it picked on the
+                // selection change (from the character before the word).
+                s.enumerateAttributes(in: replacement.range) { attrs, r, _ in
+                    guard attrs[.attachment] == nil, InlineInfo(attrs) != replacement.inline else { return }
+                    s.setAttributes(EditorStyling.attributes(block: BlockInfo(attrs), inline: replacement.inline, style: style),
+                                    range: r)
+                }
+            }
             EditorStyling.normalize(s, in: range, style: style)
             prepareAttachments(in: range)
             if textView.selectedRange != selection { textView.selectedRange = selection }
         }
         pendingEditRange = nil
+        pendingReplacementStyle = nil
         updateSlashState()
         contentDidChange()
     }

@@ -349,6 +349,29 @@ final class EditorBehaviorTests: XCTestCase {
 
     // MARK: Formats
 
+    /// iOS replaces the typed word when a suggestion is picked (or autocorrect
+    /// runs on space), inserting with whatever attributes it picked up.
+    private func acceptSuggestion(_ word: String, for range: NSRange) {
+        XCTAssertTrue(editor.textView(textView, shouldChangeTextIn: range, replacementText: word))
+        let plain: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 17)]
+        textView.textStorage.replaceCharacters(in: range, with: NSAttributedString(string: word, attributes: plain))
+        textView.selectedRange = NSRange(location: range.location + (word as NSString).length, length: 0)
+        editor.textViewDidChange(textView)
+    }
+
+    func testSuggestionKeepsTheFormattingOfTheWordItReplaces() {
+        type("plain ")
+        editor.toggle(.bold)
+        type("helo")
+        acceptSuggestion("hello", for: NSRange(location: 6, length: 4))
+
+        XCTAssertEqual(textView.textStorage.string, "plain hello")
+        XCTAssertTrue(InlineInfo(textView.textStorage.attributes(at: 6, effectiveRange: nil)).bold)
+        XCTAssertTrue(InlineInfo(textView.textStorage.attributes(at: 10, effectiveRange: nil)).bold)
+        XCTAssertFalse(InlineInfo(textView.textStorage.attributes(at: 0, effectiveRange: nil)).bold)
+        XCTAssertTrue(editor.activeFormats.contains(.bold), "the tool stays on after the suggestion")
+    }
+
     func testInlineFormatsOnSelectionAndCaret() {
         type("hello world")
         textView.selectedRange = NSRange(location: 0, length: 5)

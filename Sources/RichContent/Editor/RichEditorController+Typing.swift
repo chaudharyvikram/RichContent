@@ -130,6 +130,18 @@ extension RichEditorController {
             let atWordStart = range.location == p.range.location || [10, 32, 9, 0x2028, 0xA0].contains(previous)
             if atWordStart { pendingSlashLocation = range.location }
         }
+
+        // Replacing text (suggestion, autocorrect, typing over a selection):
+        // the new text keeps the formatting of what it replaces.
+        if range.length > 0, !text.isEmpty, range.location < tv.textStorage.length {
+            let replaced = tv.textStorage.attributes(at: range.location, effectiveRange: nil)
+            let inline = InlineInfo(replaced)
+            let block = BlockInfo(replaced)
+            tv.typingAttributes = EditorStyling.attributes(block: block, inline: inline, style: style)
+            pendingReplacementStyle = (NSRange(location: range.location, length: (text as NSString).length), inline)
+        } else {
+            pendingReplacementStyle = nil
+        }
         return true
     }
 
