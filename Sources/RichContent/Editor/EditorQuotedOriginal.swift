@@ -73,9 +73,12 @@ extension RichEditorTextView {
     /// Space between the last line of the reply and the quoted original.
     private var quotedSpacing: CGFloat { 24 }
 
-    /// Bottom inset for the text: the style's, plus room for the quoted original.
-    var bottomInsetWithQuote: CGFloat {
-        quotedHost == nil || quotedHeight <= 0 ? baseBottomInset : baseBottomInset + quotedSpacing + quotedHeight
+    /// Room below the text for the quoted original. It lives in
+    /// `contentInset`, not `textContainerInset`: UITextView scrolls the text
+    /// container's bottom inset into view along with a caret on the last line,
+    /// which made Return jump to the end of the quoted original.
+    var quotedReservedHeight: CGFloat {
+        quotedHost == nil || quotedHeight <= 0 ? 0 : quotedSpacing + quotedHeight
     }
 
     /// Shows, updates or removes the quoted original from the controller.
@@ -84,7 +87,7 @@ extension RichEditorTextView {
             quotedHost?.view.removeFromSuperview()
             quotedHost = nil
             quotedHeight = 0
-            updateBottomInset()
+            updateQuotedInset()
             return
         }
         let root = EditorQuotedOriginalView(
@@ -109,14 +112,18 @@ extension RichEditorTextView {
     private func quotedHeightDidChange(_ height: CGFloat) {
         guard abs(height - quotedHeight) > 0.5 else { return }
         quotedHeight = height
-        updateBottomInset()
+        updateQuotedInset()
         setNeedsLayout()
     }
 
-    func updateBottomInset() {
-        let bottom = bottomInsetWithQuote
-        guard abs(textContainerInset.bottom - bottom) > 0.5 else { return }
-        textContainerInset.bottom = bottom
+    /// Adds / removes only this view's share of `contentInset.bottom`, so an
+    /// app's own inset (e.g. for the keyboard) is kept.
+    func updateQuotedInset() {
+        let reserved = quotedReservedHeight
+        let delta = reserved - appliedQuotedInset
+        guard abs(delta) > 0.5 else { return }
+        contentInset.bottom += delta
+        appliedQuotedInset = reserved
         invalidateIntrinsicContentSize()
     }
 

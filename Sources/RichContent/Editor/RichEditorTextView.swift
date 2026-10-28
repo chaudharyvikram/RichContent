@@ -32,8 +32,8 @@ public final class RichEditorTextView: UITextView {
     /// The read-only quoted original below the text (see `EditorQuotedOriginal.swift`).
     var quotedHost: UIHostingController<EditorQuotedOriginalView>?
     var quotedHeight: CGFloat = 0
-    /// The style's bottom inset, before room is made for the quoted original.
-    var baseBottomInset: CGFloat = 16
+    /// The part of `contentInset.bottom` this view added for the quoted original.
+    var appliedQuotedInset: CGFloat = 0
 
     public var placeholder: String {
         get { placeholderLabel.text ?? "" }
@@ -104,9 +104,8 @@ public final class RichEditorTextView: UITextView {
 
     func apply(_ style: RichContentStyle) {
         let side = sideInset(style)
-        baseBottomInset = max(style.verticalPadding, 8) + 8
         textContainerInset = UIEdgeInsets(top: max(style.verticalPadding, 8), left: side,
-                                          bottom: bottomInsetWithQuote, right: side)
+                                          bottom: max(style.verticalPadding, 8) + 8, right: side)
         editorLayoutManager.style = style
         editorLayoutManager.accentColor = style.linkColor
         editorLayoutManager.commandHint = editorController?.configuration.commandHint ?? ""
@@ -285,6 +284,20 @@ public final class RichEditorTextView: UITextView {
         let start = paragraph.isTrailing ? textStorage.length : paragraph.range.location
         guard let marker = editorLayoutManager.markerRect(ofParagraphAt: start), marker.contains(p) else { return nil }
         return (start, controller.info(ofParagraphAt: start))
+    }
+
+    // The quoted original sits in `contentInset`, which UITextView's own
+    // sizing ignores; count it when the view grows with its content.
+    public override func sizeThatFits(_ size: CGSize) -> CGSize {
+        var fitting = super.sizeThatFits(size)
+        fitting.height += quotedReservedHeight
+        return fitting
+    }
+
+    public override var intrinsicContentSize: CGSize {
+        var size = super.intrinsicContentSize
+        if !isScrollEnabled, size.height != UIView.noIntrinsicMetric { size.height += quotedReservedHeight }
+        return size
     }
 
     public override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
