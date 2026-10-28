@@ -8,8 +8,7 @@ struct ComposeView: View {
         var config = RichEditorConfiguration.email
         config.assetColors = DemoStyle.brandColors
         // A shorter, email-style format bar (Notes shows every tool).
-        config.toolbarTools = [.bold, .italic, .underline, .strikethrough, .link, .color,
-                               .bulletList, .numberedList, .image, .undo, .redo, .hideKeyboard]
+        config.toolbarTools = .all
         let editor = RichEditorController(style: .email, configuration: config)
         editor.quotedOriginal = QuotedOriginal(.html(DemoSamples.originalEmail),
                                                attribution: "On Oct 28, 2026 at 9:41 AM, Alex Kim <alex@example.com> wrote:")

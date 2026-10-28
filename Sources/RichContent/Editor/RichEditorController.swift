@@ -30,7 +30,7 @@ public struct RichEditorConfiguration {
     /// Buttons in the format bar, in order (all by default). Tools the rest
     /// of the configuration rules out (e.g. Image without `.image` in
     /// `allowedBlocks`) are left out.
-    public var toolbarTools: [RichEditorTool] = RichEditorTool.all
+    public var toolbarTools: [RichEditorTool] = .all
 
     public init() {}
 
