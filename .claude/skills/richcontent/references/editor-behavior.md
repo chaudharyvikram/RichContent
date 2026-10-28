@@ -10,12 +10,12 @@ level), To-do, Toggle (hidden children are kept and exported), Quote,
 Callout (emoji icon, background color), Code (language), Divider, Image.
 Any block nests under another (Tab / Shift-Tab, indent buttons); children
 move with their parent. Inline: bold, italic, underline, strikethrough, code,
-link, 10 text colors + 10 highlights (dark-mode aware), app asset colors,
-custom colors from the system picker.
+link, 10 text colors + 10 highlights (dark-mode aware), and custom colors
+from the system picker.
 
 | Way | Behaviour | Controlled by |
 |---|---|---|
-| `/` menu | Blocks, media, colors, duplicate / move / delete; type to filter; arrows + Return on hardware keyboards. Format-bar `+` opens it. | `slashCommands`, `allowedBlocks`, `assetColors` |
+| `/` menu | Blocks, media, colors, duplicate / move / delete; type to filter; arrows + Return on hardware keyboards. Format-bar `+` opens it. | `slashCommands`, `allowedBlocks` |
 | Markdown shortcuts | At block start: `- ` `* ` `+ ` bullets, `1. ` numbers, `[] ` / `[x] ` to-dos, `#`–`###` headings, `> ` toggle, `" ` quote, ```` ``` ```` code, `---` divider. Inline on the closing marker: `**bold**`, `*italic*` / `_italic_`, `~strike~`, `` `code` ``. Undo restores the typed text. | `markdownShortcuts`, `allowedBlocks` |
 | Selection toolbar | Under selected text: Turn into, B I U S, code, link, color. | `showsSelectionToolbar` |
 | Block handle ⋮⋮ | Tap: Turn into, Color, Check / Expand, Icon, Language, Indent / Outdent, Move, Duplicate, Delete. Drag: move the block with its children. | `showsBlockHandles` |
@@ -45,7 +45,7 @@ the emoji, a failed-upload image offers Retry / Remove. The quoted original
 `.background(_)`, `.duplicate`, `.delete`, `.moveUp`, `.moveDown`) and
 `editor.run(_:)` are public, but the command catalogue and initializer are
 not: apps can't add custom commands or list them. Shape the menu with
-`allowedBlocks`, `slashCommands` and `assetColors`; open it with
+`allowedBlocks` and `slashCommands`; open it with
 `showCommandMenu()`.
 
 ## Document model (`editor.attributedText`)
@@ -78,9 +78,10 @@ Type helpers: `RichBlockType.title`, `.symbolName`, `.isList`, `.isHeading`,
 ## Persisting colors
 
 `RichColor` is `RawRepresentable`: store `color.rawValue` (`"red"`,
-`"asset:Brand"`, `"hex:#7F3FBF"`) and restore with `RichColor(rawValue:)`.
-`RichColor.allCases` is the built-in palette; `assetName` / `customColor`
-tell asset and picked colors apart. In HTML, colors export as
+`"hex:#7F3FBF"`) and restore with `RichColor(rawValue:)`.
+`RichColor.allCases` is the built-in palette; `customColor` is non-nil for
+picked colors. (App asset colors were removed; old `data-color="asset:…"`
+HTML imports as the exported hex color.) In HTML, colors export as
 `data-color` / `data-highlight` with a light-mode inline style.
 
 ## Performance

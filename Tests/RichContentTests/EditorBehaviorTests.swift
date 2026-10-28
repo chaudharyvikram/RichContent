@@ -303,21 +303,15 @@ final class EditorBehaviorTests: XCTestCase {
         XCTAssertNotNil(editor.slash)
     }
 
-    func testColorMenuPutsAppColorsFirstAndCollapsesPalette() {
-        editor.configuration.assetColors = [.asset("Brand")]
+    func testColorMenuHasPickerThenPaletteInTwoSections() {
         let menu = EditorMenus.color(editor, wholeBlock: false)
-        let sections = menu.children.compactMap { $0 as? UIMenu }
-        XCTAssertEqual(sections.map(\.title), ["Text colors", "Background colors"])
-        for section in sections {
-            XCTAssertTrue(section.options.contains(.displayInline), "both sections are expanded")
-            XCTAssertEqual(section.children.count, 1 + 1 + RichColor.allCases.count)
-            XCTAssertEqual(section.children.first?.title, "Choose from color picker…")
-        }
-        XCTAssertEqual(sections[0].children[1].title, "Brand", "asset colors come before the palette")
-        XCTAssertEqual(sections[1].children[1].title, "Brand background")
-        XCTAssertEqual(sections[0].children[2].title, "Default")
-        XCTAssertTrue(RichEditorCommand.filter(RichEditorCommand.catalog(editor.configuration), query: "brand")
-            .contains { $0.action == .textColor(.asset("Brand")) })
+        let groups = menu.children.compactMap { $0 as? UIMenu }
+        XCTAssertEqual(groups.map(\.title), ["Text colors", "", "Background colors", ""])
+        XCTAssertTrue(groups.allSatisfy { $0.options.contains(.displayInline) }, "all groups are expanded")
+        XCTAssertEqual(groups[0].children.map(\.title), ["Choose from color picker…"])
+        XCTAssertEqual(groups[1].children.map(\.title), RichColor.allCases.map(\.title))
+        XCTAssertEqual(groups[2].children.map(\.title), ["Choose from color picker…"])
+        XCTAssertEqual(groups[3].children.first?.title, "Default background")
     }
 
     func testSlashFilterRanking() {

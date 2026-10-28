@@ -45,15 +45,6 @@ public struct RichEditorCommand: Identifiable, Equatable {
                                               symbolName: "link", section: "Media", keywords: ["image", "url", "link", "embed"],
                                               action: .imageFromURL))
         }
-        for color in config.assetColors {
-            commands.append(RichEditorCommand(id: "color-\(color.rawValue)", title: color.title,
-                                              subtitle: "App text color", symbolName: "textformat", section: "Color",
-                                              keywords: [color.title.lowercased(), "color", "colour", "text", "app"], action: .textColor(color)))
-            commands.append(RichEditorCommand(id: "background-\(color.rawValue)", title: "\(color.title) background",
-                                              subtitle: "App highlight", symbolName: "highlighter", section: "Color",
-                                              keywords: [color.title.lowercased(), "background", "highlight", "bg", "app"],
-                                              action: .background(color)))
-        }
         for color in RichColor.allCases {
             commands.append(RichEditorCommand(id: "color-\(color.rawValue)", title: color == .default ? "Default color" : color.title,
                                               subtitle: "Text color", symbolName: "textformat", section: "Color",

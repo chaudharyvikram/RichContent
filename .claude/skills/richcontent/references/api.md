@@ -71,7 +71,7 @@ Notes:
 - `lineSpacing` applies to natively rendered text only; web-rendered HTML uses
   `line-height: 1.4`. Keep `lineSpacing` small (≈2–4) so both look alike.
 - Colors are resolved for light and dark separately for the web view; use
-  dynamic colors (asset colors with a dark appearance, system colors).
+  dynamic colors (color assets with a dark appearance, system colors).
 
 | Group | Fields |
 |---|---|
@@ -157,7 +157,6 @@ Presets `.standard`, `.email` (no toggles/callouts, no command hint).
 | `markdownShortcuts` | `true` | `- `, `1. `, `[] `, `# `, `> `, `**bold**` while typing |
 | `loadsRemoteImages` | `true` | `http(s)` images in the document |
 | `commandHint` | `"Type '/' for commands"` | empty-line hint |
-| `assetColors: [RichColor]` | `[]` | e.g. `[.asset("Brand")]`, listed first in color menus |
 | `maxImagePixelSize` | `2048` | long side of picked/pasted images |
 | `showsImageUploadFailureAlert` | `true` | Retry / Remove Image alert |
 | `toolbarTools: [RichEditorTool]` | `.all` | format-bar buttons, in order |
@@ -167,7 +166,7 @@ lists `.all`, `.basic`. Separators are automatic between groups; tools the confi
 
 ### RichColor
 Palette `.default .gray .brown .orange .yellow .green .blue .purple .pink .red` (dark-mode aware),
-`.asset("Name")` (from `RichColor.assetBundle`, default `.main`), `.custom(UIColor)` (stored as hex).
+`.custom(UIColor)` (stored as hex; `customColor` returns it). No app/asset colors in menus.
 `title`, `textColor`, `backgroundColor`.
 
 ### Serializer (no editor instance needed)

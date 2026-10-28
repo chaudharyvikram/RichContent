@@ -223,25 +223,22 @@ public struct RichEditorToolbar: View {
         .accessibilityLabel("Turn into, \(controller.blockType.title)")
     }
 
-    /// Text colors and Background colors, both expanded: color picker, the
-    /// app's asset colors, then the built-in palette.
+    /// Text colors and Background colors, both expanded: color picker, then
+    /// the built-in palette.
     private var colorMenu: some View {
-        let assets = controller.configuration.assetColors
-        return Menu {
+        Menu {
             // Sections are separated; the titled one heads each group.
             Section("Text colors") {
                 Button { controller.presentColorPicker(background: false) } label: {
                     Label("Choose from color picker…", systemImage: "eyedropper")
                 }
             }
-            if !assets.isEmpty { Section { textButtons(assets) } }
             Section { textButtons(RichColor.allCases) }
             Section("Background colors") {
                 Button { controller.presentColorPicker(background: true) } label: {
                     Label("Choose from color picker…", systemImage: "eyedropper")
                 }
             }
-            if !assets.isEmpty { Section { backgroundButtons(assets) } }
             Section { backgroundButtons(RichColor.allCases) }
         } label: {
             ToolbarIcon(systemName: "paintpalette", isActive: controller.textColor != .default || controller.highlight != .default,

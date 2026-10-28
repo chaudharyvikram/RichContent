@@ -220,19 +220,14 @@ config.markdownShortcuts = true
 config.slashCommands = true
 config.loadsRemoteImages = true
 config.commandHint = "Type '/' for commands"
-config.assetColors = [.asset("Brand"), .asset("Accent")]   // your Assets.xcassets colors
 let editor = RichEditorController(style: .email, configuration: config)
 ```
 
-**App colors.** `assetColors` lists named colors from your asset catalog
-(`RichColor.assetBundle`, default `.main`). They appear first and expanded in
-every Color menu (block handle, selection toolbar, keyboard toolbar) and in
-the `/` menu, above the built-in palette, in both the "Text colors" and
-"Background colors" sections (each also starts with "Choose from color
-picker…"). Asset colors keep their light / dark variants;
-as highlights they're used as a light tint. iOS can't list an asset catalog
-at runtime, so name the colors you want offered. They export as
-`data-color="asset:Brand"` with the light-mode hex as the inline style.
+**Colors.** Every Color menu (block handle, selection toolbar, format bar)
+has two expanded sections, "Text colors" and "Background colors", each
+starting with "Choose from color picker…" followed by the 10 built-in colors
+(dark-mode aware). Picked colors are stored as hex (`RichColor.custom(_:)`)
+and export as `data-color="hex:#RRGGBB"` with an inline style.
 
 ### Formats
 

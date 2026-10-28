@@ -122,21 +122,13 @@ public enum RichInlineFormat: String, Hashable, CaseIterable {
 }
 
 /// A text / highlight color: one of Notion's palette (adapts to dark mode),
-/// or a named color from an asset catalog (`.asset("Brand")`).
-///
-/// ```swift
-/// var config = RichEditorConfiguration()
-/// config.assetColors = [.asset("Brand"), .asset("Accent")]   // shown first in color menus
-/// RichColor.assetBundle = .main                              // where the assets live (default)
-/// ```
+/// or any color picked with the system color picker (`.custom(_:)`).
 public struct RichColor: Hashable, RawRepresentable {
-    /// Palette name ("red"), "asset:<name>", or "hex:#RRGGBB[AA]" for a picked color.
+    /// Palette name ("red"), or "hex:#RRGGBB[AA]" for a picked color.
     public let rawValue: String
 
     public init?(rawValue: String) {
-        if rawValue.hasPrefix(Self.assetPrefix), rawValue.count > Self.assetPrefix.count {
-            self.rawValue = rawValue
-        } else if rawValue.hasPrefix(Self.hexPrefix), Self.parseHex(String(rawValue.dropFirst(Self.hexPrefix.count))) != nil {
+        if rawValue.hasPrefix(Self.hexPrefix), Self.parseHex(String(rawValue.dropFirst(Self.hexPrefix.count))) != nil {
             self.rawValue = rawValue
         } else if Self.palette[rawValue] != nil {
             self.rawValue = rawValue
@@ -158,28 +150,8 @@ public struct RichColor: Hashable, RawRepresentable {
     public static let pink = RichColor(palette: "pink")
     public static let red = RichColor(palette: "red")
 
-    /// The built-in palette (asset colors are listed by `RichEditorConfiguration.assetColors`).
+    /// The built-in palette.
     public static let allCases: [RichColor] = [.default, .gray, .brown, .orange, .yellow, .green, .blue, .purple, .pink, .red]
-
-    // MARK: Asset colors
-
-    private static let assetPrefix = "asset:"
-
-    /// Bundle that holds the asset catalog of `.asset(_:)` colors.
-    public static var assetBundle: Bundle = .main
-
-    /// A named color from the asset catalog in `assetBundle`.
-    public static func asset(_ name: String) -> RichColor { RichColor(palette: assetPrefix + name) }
-
-    /// Asset name, for colors made with `.asset(_:)`.
-    public var assetName: String? {
-        rawValue.hasPrefix(Self.assetPrefix) ? String(rawValue.dropFirst(Self.assetPrefix.count)) : nil
-    }
-
-    /// The asset color, or `nil` for palette colors and missing assets.
-    private var assetColor: UIColor? {
-        assetName.flatMap { UIColor(named: $0, in: Self.assetBundle, compatibleWith: nil) }
-    }
 
     // MARK: Custom colors
 
@@ -213,16 +185,8 @@ public struct RichColor: Hashable, RawRepresentable {
 
     // MARK: Appearance
 
-    /// "Default", "Red", or the asset name split into words ("BrandBlue" → "Brand Blue").
+    /// "Default", "Red", or "Custom #7F3FBF".
     public var title: String {
-        if let name = assetName {
-            var words = ""
-            for (i, c) in name.enumerated() {
-                if i > 0, c.isUppercase, let previous = words.last, !previous.isUppercase, previous != " " { words.append(" ") }
-                words.append(c == "_" || c == "-" ? " " : c)
-            }
-            return words
-        }
         if customColor != nil { return "Custom " + rawValue.dropFirst(Self.hexPrefix.count) }
         return rawValue == "default" ? "Default" : rawValue.capitalized
     }
@@ -230,27 +194,24 @@ public struct RichColor: Hashable, RawRepresentable {
     /// Text color; `.default` means "the style's text color".
     public var textColor: UIColor {
         if let custom = customColor { return custom }
-        if assetName != nil { return assetColor ?? .label }
         let p = Self.palette[rawValue]!
         return Self.dynamic(p.lightText, p.darkText)
     }
 
-    /// Highlight / callout background. Asset colors are used as a light tint
-    /// so text stays readable on them.
+    /// Highlight / callout background.
     public var backgroundColor: UIColor {
         if let custom = customColor { return custom }
-        if assetName != nil { return (assetColor ?? .systemGray).withAlphaComponent(0.22) }
         let p = Self.palette[rawValue]!
         return Self.dynamic(p.lightBackground, p.darkBackground)
     }
 
     /// Light-mode color, used in exported HTML.
     var textHex: String {
-        if customColor != nil || assetName != nil { return textColor.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light)).cssHex }
+        if customColor != nil { return textColor.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light)).cssHex }
         return String(format: "#%06X", Self.palette[rawValue]!.lightText)
     }
     var backgroundHex: String {
-        if customColor != nil || assetName != nil { return backgroundColor.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light)).cssHex }
+        if customColor != nil { return backgroundColor.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light)).cssHex }
         return String(format: "#%06X", Self.palette[rawValue]!.lightBackground)
     }
 

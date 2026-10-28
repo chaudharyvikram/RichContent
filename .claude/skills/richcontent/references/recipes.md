@@ -160,7 +160,6 @@ are available for custom UI.
 var config = RichEditorConfiguration.email
 config.toolbarTools = [.bold, .italic, .underline, .link, .color,
                        .bulletList, .numberedList, .image, .undo, .redo, .hideKeyboard]
-config.assetColors = [.asset("Brand"), .asset("Accent")]
 config.allowedBlocks.remove(.image)        // also hides the image tool, "/image", paste of images
 config.showsBlockHandles = false
 config.maxImagePixelSize = 1600

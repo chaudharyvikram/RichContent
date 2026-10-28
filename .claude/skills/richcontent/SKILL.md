@@ -65,7 +65,8 @@ read `html` / `markdown` / `plainText` / `replyHTML()` out of it.
 - **Reply / forward** → recipe "Reply": `quotedOriginal` + `replyHTML()`.
 - **Fewer toolbar buttons** → `configuration.toolbarTools = [.bold, .italic, …]`
   or `.basic`; per bar: `.richEditorToolbar(editor, tools:)`.
-- **Brand colors in color menus** → `configuration.assetColors = [.asset("Brand")]`.
+- **Brand colors in color menus** → not supported: menus show the built-in
+  palette plus "Choose from color picker…" (any color, stored as hex).
 - **Image upload to your backend** → recipe "Image uploads".
 - **"Can the editor do X?"** → check "Not supported" in editor-behavior.md
   before promising a feature; suggest a custom toolbar for custom actions.

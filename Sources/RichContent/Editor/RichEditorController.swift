@@ -17,10 +17,6 @@ public struct RichEditorConfiguration {
     public var loadsRemoteImages = true
     /// Shown in an empty text block under the caret.
     public var commandHint = "Type '/' for commands"
-    /// App colors from an asset catalog (`.asset("Brand")`), listed first and
-    /// expanded in color menus; the built-in palette sits in collapsed sections.
-    /// iOS can't list an asset catalog at runtime, so name the colors here.
-    public var assetColors: [RichColor] = []
     /// Pasted / picked images are scaled down to this many pixels on the long side.
     public var maxImagePixelSize: CGFloat = 2048
     /// When an `imageUploader` upload fails, show an alert with Retry and

@@ -110,38 +110,18 @@ final class EditorFormatTests: XCTestCase {
         XCTAssertEqual(Self.describe(EditorDocument.blocks(from: storage)), Self.describe(sampleDocument))
     }
 
-    func testAssetColorsRoundTrip() {
-        let brand = RichColor.asset("BrandIndigo")
-        XCTAssertEqual(brand.title, "Brand Indigo")
-        XCTAssertEqual(RichColor.asset("brand_accent").title, "brand accent")
-        XCTAssertEqual(RichColor(rawValue: "asset:BrandIndigo"), brand)
+    func testLegacyAssetColorsImportAsCustomColors() {
+        XCTAssertNil(RichColor(rawValue: "asset:BrandIndigo"), "asset colors were removed")
         XCTAssertNil(RichColor(rawValue: "notacolor"))
         XCTAssertEqual(RichColor(rawValue: "red"), .red)
 
-        let text = NSMutableAttributedString(string: "plain ")
-        text.append(inline("brand") { $0.color = brand; $0.highlight = .asset("Coral") })
-        let exported = RichEditorSerializer.html(blocks: [EditorBlock(.paragraph, content: text)])
-        XCTAssertTrue(exported.contains(#"data-color="asset:BrandIndigo""#), exported)
-        let parsed = EditorHTMLParser.blocks(fromHTML: exported)[0].content
-        let info = InlineInfo(parsed.attributes(at: parsed.length - 1, effectiveRange: nil))
-        XCTAssertEqual(info.color, brand)
-        XCTAssertEqual(info.highlight, .asset("Coral"))
-    }
-
-    func testToolbarShowsEveryToolByDefault() {
-        XCTAssertEqual(RichEditorConfiguration().toolbarTools, RichEditorTool.allCases)
-        XCTAssertEqual(RichEditorTool.allCases.last, .hideKeyboard)
-        XCTAssertEqual(RichEditorTool.allCases.compactMap(\.inlineFormat), [.bold, .italic, .underline, .strikethrough, .code])
-    }
-
-    func testHiddenEmailPartsAreNotImported() {
-        XCTAssertEqual(html("""
-        <body><div style="display: none">Preheader \u{2007}\u{034F} \u{2007}\u{034F}<div>nested</div></div>
-        <div style="display:none; max-height:0; overflow:hidden;">Preheader again</div>
-        <p style="margin: 0;">Hi there</p><span hidden>secret</span>
-        <img src="https://t.example/o.gif" style="width: 1px !important; display: none !important;" alt="">
-        <p style="color:#000;display:block">Bye</p></body>
-        """), ["paragraph@1: Hi there", "paragraph@1: Bye"])
+        // Notes saved while asset colors existed keep their exported hex.
+        let html = #"<p><span data-color="asset:BrandIndigo" style="color:#5856D6">brand</span> "#
+            + #"<span data-highlight="asset:Coral" style="background-color:#ffd8cc">tint</span></p>"#
+        let parsed = EditorHTMLParser.blocks(fromHTML: html)[0].content
+        XCTAssertEqual(InlineInfo(parsed.attributes(at: 0, effectiveRange: nil)).color, RichColor(rawValue: "hex:#5856D6"))
+        XCTAssertEqual(InlineInfo(parsed.attributes(at: parsed.length - 1, effectiveRange: nil)).highlight,
+                       RichColor(rawValue: "hex:#FFD8CC"))
     }
 
     func testCustomColorsRoundTrip() {

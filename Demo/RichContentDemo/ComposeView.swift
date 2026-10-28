@@ -6,7 +6,6 @@ import RichContent
 struct ComposeView: View {
     @StateObject private var editor: RichEditorController = {
         var config = RichEditorConfiguration.email
-        config.assetColors = DemoStyle.brandColors
         // Every tool (the default); list some, e.g. [.bold, .italic, .link], or use .basic.
         config.toolbarTools = .all
         let editor = RichEditorController(style: .email, configuration: config)

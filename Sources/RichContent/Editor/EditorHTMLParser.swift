@@ -494,11 +494,18 @@ enum EditorHTMLParser {
                 if decoration.contains("underline") { ctx.inline.underline = true }
                 if decoration.contains("line-through") { ctx.inline.strike = true }
             }
-            if node["data-color"] == nil, let color = cssValue("color", in: style).flatMap(EditorHTMLParser.paletteColor(css:)) {
+            // A `data-color` the editor no longer knows (e.g. the removed
+            // "asset:" colors) keeps its exported inline hex as a custom color.
+            let knownColor = node["data-color"].flatMap(RichColor.init(rawValue:)) != nil
+            let knownHighlight = node["data-highlight"].flatMap(RichColor.init(rawValue:)) != nil
+            if !knownColor, let css = cssValue("color", in: style),
+               let color = EditorHTMLParser.paletteColor(css: css)
+                ?? (node["data-color"] != nil ? EditorHTMLParser.hexColor(css: css) : nil) {
                 ctx.inline.color = color
             }
-            if node["data-highlight"] == nil,
-               let bg = (cssValue("background-color", in: style) ?? cssValue("background", in: style)).flatMap(EditorHTMLParser.paletteHighlight(css:)) {
+            if !knownHighlight, let css = cssValue("background-color", in: style) ?? cssValue("background", in: style),
+               let bg = EditorHTMLParser.paletteHighlight(css: css)
+                ?? (node["data-highlight"] != nil ? EditorHTMLParser.hexColor(css: css) : nil) {
                 ctx.inline.highlight = bg
             }
             if let family = cssValue("font-family", in: style), family.contains("mono") || family.contains("courier") || family.contains("menlo") {
@@ -542,6 +549,13 @@ enum EditorHTMLParser {
         if let named = namedHighlight[value] { return named }
         if value.hasPrefix("#"), let match = RichColor.matching(backgroundHex: expandHex(value)) { return match }
         return nil
+    }
+
+    /// `#rgb` / `#rrggbb` as a custom color.
+    static func hexColor(css: String) -> RichColor? {
+        let value = css.trimmingCharacters(in: .whitespaces).lowercased()
+        guard value.hasPrefix("#") else { return nil }
+        return RichColor(rawValue: "hex:#" + expandHex(value).uppercased())
     }
 
     private static func expandHex(_ hex: String) -> String {
