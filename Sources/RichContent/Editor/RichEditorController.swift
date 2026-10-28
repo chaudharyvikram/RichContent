@@ -87,8 +87,16 @@ public final class RichEditorController: NSObject, ObservableObject {
     var pendingEditRange: NSRange?
     var slash: SlashState?
     var slashPending: Int?
-    /// Link taps (from the edit menu's "Open Link"). `nil` opens with the system.
+    /// Link taps (from the edit menu's "Open Link" and the quoted original).
+    /// `nil` opens with the system.
     public var onOpenURL: ((URL) -> Void)?
+
+    /// The message being replied to, shown read-only below the text like the
+    /// quoted original in Mail and Gmail: it scrolls with the reply, can't be
+    /// edited, and `replyHTML()` sends it. `nil` shows nothing.
+    public var quotedOriginal: QuotedOriginal? {
+        didSet { if quotedOriginal != oldValue { textView?.quotedOriginalDidChange() } }
+    }
 
     public init(style: RichContentStyle = .standard, content: RichContent? = nil,
                 configuration: RichEditorConfiguration = .standard) {
@@ -116,6 +124,12 @@ public final class RichEditorController: NSObject, ObservableObject {
     /// Reply HTML: this document, an attribution line and the quoted original.
     public func replyHTML(quoting original: RichContent, attribution: String) -> String {
         RichEditorSerializer.replyHTML(attributedText, quoting: original, attribution: attribution, style: style)
+    }
+
+    /// Reply HTML with `quotedOriginal` (just `html` when there is none).
+    public func replyHTML() -> String {
+        guard let quoted = quotedOriginal else { return html }
+        return replyHTML(quoting: quoted.content, attribution: quoted.attribution)
     }
 
     /// Loads any content the viewer understands (HTML, Markdown, plain, attributed, mixed).
@@ -172,6 +186,7 @@ public final class RichEditorController: NSObject, ObservableObject {
         tv.delegate = self
         tv.editorController = self
         tv.apply(style)
+        tv.quotedOriginalDidChange()
         if let document = pendingDocument {
             pendingDocument = nil
             tv.textStorage.setAttributedString(restyled(document))
@@ -186,6 +201,7 @@ public final class RichEditorController: NSObject, ObservableObject {
         style = newStyle
         guard let tv = textView else { return }
         tv.apply(newStyle)
+        tv.quotedOriginalDidChange()
         let selection = tv.selectedRange
         EditorStyling.normalize(tv.textStorage, in: NSRange(location: 0, length: tv.textStorage.length), style: newStyle)
         tv.selectedRange = selection

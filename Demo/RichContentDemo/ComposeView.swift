@@ -1,21 +1,20 @@
 import SwiftUI
 import RichContent
 
-/// Email reply: the editor with the email preset, the original below, and
-/// the HTML that would be sent.
+/// Email reply: the editor with the email preset and the quoted original
+/// inside it (read-only, like Mail and Gmail), and the HTML that would be sent.
 struct ComposeView: View {
     @StateObject private var editor: RichEditorController = {
         var config = RichEditorConfiguration.email
         config.assetColors = DemoStyle.brandColors
-        return RichEditorController(style: .email, configuration: config)
+        let editor = RichEditorController(style: .email, configuration: config)
+        editor.quotedOriginal = QuotedOriginal(.html(DemoSamples.originalEmail),
+                                               attribution: "On Oct 28, 2026 at 9:41 AM, Alex Kim <alex@example.com> wrote:")
+        return editor
     }()
     @State private var to = "alex@example.com"
     @State private var subject = "Re: Launch plan"
-    @State private var showsQuoted = false
     @State private var sentHTML: String?
-
-    private let original: RichContent = .html(DemoSamples.originalEmail)
-    private let attribution = "On Oct 28, 2026 at 9:41 AM, Alex Kim <alex@example.com> wrote:"
 
     var body: some View {
         NavigationStack {
@@ -28,33 +27,15 @@ struct ComposeView: View {
                 }
                 .padding(.horizontal, 16)
 
+                // The quoted original scrolls with the reply and can't be edited.
                 RichContentEditor(controller: editor, placeholder: "Write your reply…")
-
-                VStack(spacing: 0) {
-                    Button {
-                        withAnimation(.snappy) { showsQuoted.toggle() }
-                    } label: {
-                        Label(showsQuoted ? "Hide original" : "Show original", systemImage: "text.quote")
-                            .font(.footnote.weight(.medium))
-                    }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.capsule)
-                    .padding(.vertical, 8)
-
-                    if showsQuoted {
-                        ScrollView { RichContentView(original) }
-                            .frame(maxHeight: 240)
-                            .background(Color(.secondarySystemBackground))
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-                }
             }
             .navigationTitle("Reply")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Send", systemImage: "paperplane.fill") {
-                        sentHTML = editor.replyHTML(quoting: original, attribution: attribution)
+                        sentHTML = editor.replyHTML()
                     }
                     .disabled(editor.isEmpty)
                 }

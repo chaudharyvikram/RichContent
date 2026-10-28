@@ -243,6 +243,20 @@ clients and in `RichContentView`. Markdown keeps structure but not colors,
 callout styling or toggle state (toggles become list items).
 `replyHTML(quoting:attribution:)` builds an email reply around the original.
 
+### Replying with the original below
+
+Like Mail and Gmail, the editor can show the message being replied to under
+the reply: rendered like `RichContentView` (designed emails in the web view),
+behind a quote bar, scrolling with the text, and read-only (the caret never
+enters it). `replyHTML()` sends the reply with it quoted.
+
+```swift
+editor.quotedOriginal = QuotedOriginal(.auto(email.body),
+                                       attribution: "On Oct 28, 2026 at 9:41 AM, Alex Kim wrote:")
+send(editor.replyHTML())   // reply + attribution + <blockquote type="cite">original</blockquote>
+editor.quotedOriginal = nil   // remove it
+```
+
 The editor's HTML import is its own parser (no WebKit), so loading is fast
 and works off-screen and in previews.
 

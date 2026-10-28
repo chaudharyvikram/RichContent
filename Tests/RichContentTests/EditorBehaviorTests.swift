@@ -374,6 +374,27 @@ final class EditorBehaviorTests: XCTestCase {
         XCTAssertTrue(InlineInfo(textView.textStorage.attributes(at: textView.textStorage.length - 1, effectiveRange: nil)).italic)
     }
 
+    func testQuotedOriginalIsShownButNotEditableAndIsSent() {
+        type("Sounds good")
+        XCTAssertEqual(editor.replyHTML(), editor.html)
+        XCTAssertNil(textView.quotedHost)
+
+        let original = RichContent.html("<p>Can we demo on Thursday?</p>")
+        editor.quotedOriginal = QuotedOriginal(original, attribution: "On Oct 28, Alex wrote:")
+        XCTAssertNotNil(textView.quotedHost)
+        XCTAssertTrue(textView.quotedHost?.view.superview === textView)
+        // Not part of the editable document…
+        XCTAssertFalse(editor.html.contains("Can we demo"))
+        XCTAssertEqual(blocks, ["paragraph@1: Sounds good"])
+        // …but sent with the reply.
+        XCTAssertEqual(editor.replyHTML(), editor.replyHTML(quoting: original, attribution: "On Oct 28, Alex wrote:"))
+        XCTAssertTrue(editor.replyHTML().contains("Can we demo on Thursday?"))
+
+        editor.quotedOriginal = nil
+        XCTAssertNil(textView.quotedHost)
+        XCTAssertEqual(editor.replyHTML(), editor.html)
+    }
+
     func testPickedColorAppliesToSelectionFromWhenPickerOpened() {
         type("hello world")
         let purple = UIColor(red: 0.6, green: 0.2, blue: 0.9, alpha: 1)

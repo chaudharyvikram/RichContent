@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 import PhotosUI
 
@@ -27,6 +28,12 @@ public final class RichEditorTextView: UITextView {
     private var drag: (source: Int, target: Int)?
     private var autoScrollLink: CADisplayLink?
     private var autoScrollSpeed: CGFloat = 0
+
+    /// The read-only quoted original below the text (see `EditorQuotedOriginal.swift`).
+    var quotedHost: UIHostingController<EditorQuotedOriginalView>?
+    var quotedHeight: CGFloat = 0
+    /// The style's bottom inset, before room is made for the quoted original.
+    var baseBottomInset: CGFloat = 16
 
     public var placeholder: String {
         get { placeholderLabel.text ?? "" }
@@ -97,8 +104,9 @@ public final class RichEditorTextView: UITextView {
 
     func apply(_ style: RichContentStyle) {
         let side = sideInset(style)
+        baseBottomInset = max(style.verticalPadding, 8) + 8
         textContainerInset = UIEdgeInsets(top: max(style.verticalPadding, 8), left: side,
-                                          bottom: max(style.verticalPadding, 8) + 8, right: side)
+                                          bottom: bottomInsetWithQuote, right: side)
         editorLayoutManager.style = style
         editorLayoutManager.accentColor = style.linkColor
         editorLayoutManager.commandHint = editorController?.configuration.commandHint ?? ""
@@ -136,7 +144,13 @@ public final class RichEditorTextView: UITextView {
         let width = bounds.width - inset.left - inset.right
         let size = placeholderLabel.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
         placeholderLabel.frame = CGRect(x: inset.left, y: inset.top, width: width, height: size.height)
+        layoutQuotedOriginal()
         updateOverlays()
+    }
+
+    public override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if isQuotedOriginalTouch(gestureRecognizer) { return false }
+        return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }
 
     private func focusInfo() -> EditorLayoutManager.Focus? {

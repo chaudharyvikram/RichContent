@@ -20,7 +20,7 @@ xcodebuild -project Demo/RichContentDemo.xcodeproj -scheme RichContentDemo -dest
 | Tab | Shows |
 |---|---|
 | **Notes** | A small notes app. Notes are saved as the editor's HTML (in Documents/notes.json) as you type, and reopen exactly as you left them. The **Welcome** note is a guided tour; **Weekly sync** is a realistic meeting note; the last was imported from Markdown. ⚙︎ toggles editor options and allowed blocks live; Export shows the HTML / Markdown / plain text and a rendered preview. "…" → Restore Sample Notes resets everything. |
-| **Compose** | An email reply using `RichEditorConfiguration.email` (no toggles / callouts). Send shows the reply built with `replyHTML(quoting:attribution:)`, rendered and as HTML source. |
+| **Compose** | An email reply using `RichEditorConfiguration.email` (no toggles / callouts). The original is quoted inside the editor (read-only, scrolls with the reply); Send shows `replyHTML()`, rendered and as HTML source. |
 | **Viewer** | `RichContentView` on plain-text quoting, an HTML email, a table newsletter (web view), Markdown, the editor's own output, and one string mixing HTML, Markdown and plain text. |
 
 ## Things to try in the editor
