@@ -270,7 +270,7 @@ separators are added between groups:
 config.toolbarTools = [.bold, .italic, .underline, .link, .color,
                        .bulletList, .numberedList, .image, .undo, .redo, .hideKeyboard]
 // or per bar:
-.richEditorToolbar(editor, tools: RichEditorTool.basic)
+.richEditorToolbar(editor, tools: .basic)   // or .all (the default)
 ```
 
 Tools: `addBlock`, `turnInto`, `bold`, `italic`, `underline`, `strikethrough`,

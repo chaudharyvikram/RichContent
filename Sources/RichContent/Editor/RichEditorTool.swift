@@ -6,15 +6,8 @@ import Foundation
 ///
 /// ```swift
 /// config.toolbarTools = [.bold, .italic, .underline, .link, .bulletList, .numberedList, .image, .hideKeyboard]
+/// config.toolbarTools = .basic   // or .all (the default)
 /// ```
-///
-
-extension Collection where Element == RichEditorTool {
-    public static var all: [RichEditorTool] {
-        RichEditorTool.allCases
-    }
-}
-
 public enum RichEditorTool: String, Hashable, CaseIterable, Sendable {
     /// "+": the block menu (needs `slashCommands`).
     case addBlock
@@ -31,9 +24,6 @@ public enum RichEditorTool: String, Hashable, CaseIterable, Sendable {
     case undo, redo
     /// Dismisses the keyboard; pinned at the trailing end.
     case hideKeyboard
-    
-    /// Text styling only.
-    public static let basic: [RichEditorTool] = [.bold, .italic, .underline, .strikethrough, .link, .hideKeyboard]
 
     /// Separators are drawn where this changes.
     var group: Int {
@@ -67,4 +57,13 @@ public enum RichEditorTool: String, Hashable, CaseIterable, Sendable {
         default: return nil
         }
     }
+}
+
+/// Ready-made tool lists: `config.toolbarTools = .all` or `.basic`.
+public extension Array where Element == RichEditorTool {
+    /// Every tool, in the default order.
+    static var all: [RichEditorTool] { RichEditorTool.allCases }
+
+    /// Text styling only.
+    static var basic: [RichEditorTool] { [.bold, .italic, .underline, .strikethrough, .link, .hideKeyboard] }
 }
