@@ -269,6 +269,16 @@ config.toolbarTools = [.bold, .italic, .underline, .link, .color,
 .richEditorToolbar(editor, tools: .basic)   // or .all (the default)
 ```
 
+Icons and names can be replaced per tool (names are what VoiceOver reads and
+the long-press tooltip shows; images are tinted like the built-in icons):
+
+```swift
+config.toolbarIcons = [.bold: .system("bold.underline"),
+                       .image: .asset("AttachPhoto"),             // your asset catalog
+                       .link: .image(UIImage(named: "Link")!)]
+config.toolbarLabels = [.bold: "Fett", .italic: "Kursiv"]
+```
+
 Tools: `addBlock`, `turnInto`, `bold`, `italic`, `underline`, `strikethrough`,
 `code`, `link`, `color`, `todo`, `bulletList`, `numberedList`, `toggle`,
 `outdent`, `indent`, `image`, `undo`, `redo`, `hideKeyboard`. Tools the

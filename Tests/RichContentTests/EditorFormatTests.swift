@@ -124,6 +124,26 @@ final class EditorFormatTests: XCTestCase {
                        RichColor(rawValue: "hex:#FFD8CC"))
     }
 
+    func testToolbarShowsEveryToolByDefault() {
+        XCTAssertEqual(RichEditorConfiguration().toolbarTools, RichEditorTool.allCases)
+        XCTAssertEqual(RichEditorTool.allCases.last, .hideKeyboard)
+        XCTAssertEqual(RichEditorTool.allCases.compactMap(\.inlineFormat), [.bold, .italic, .underline, .strikethrough, .code])
+        XCTAssertEqual(RichEditorTool.bold.defaultIcon, .system("bold"))
+        XCTAssertEqual(RichEditorTool.bulletList.defaultLabel, "Bulleted list")
+        XCTAssertEqual(RichEditorTool.hideKeyboard.defaultIcon, .system("keyboard.chevron.compact.down"))
+        XCTAssertTrue(RichEditorConfiguration().toolbarIcons.isEmpty && RichEditorConfiguration().toolbarLabels.isEmpty)
+    }
+
+    func testHiddenEmailPartsAreNotImported() {
+        XCTAssertEqual(html("""
+        <body><div style="display: none">Preheader \u{2007}\u{034F} \u{2007}\u{034F}<div>nested</div></div>
+        <div style="display:none; max-height:0; overflow:hidden;">Preheader again</div>
+        <p style="margin: 0;">Hi there</p><span hidden>secret</span>
+        <img src="https://t.example/o.gif" style="width: 1px !important; display: none !important;" alt="">
+        <p style="color:#000;display:block">Bye</p></body>
+        """), ["paragraph@1: Hi there", "paragraph@1: Bye"])
+    }
+
     func testCustomColorsRoundTrip() {
         let custom = RichColor.custom(UIColor(red: 1, green: 0.5, blue: 0, alpha: 1))
         XCTAssertEqual(custom.rawValue, "hex:#FF8000")

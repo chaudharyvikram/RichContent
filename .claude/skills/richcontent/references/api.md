@@ -163,6 +163,9 @@ Presets `.standard`, `.email` (no toggles/callouts, no command hint).
 
 `RichEditorTool`: `addBlock turnInto bold italic underline strikethrough code link color todo bulletList numberedList toggle outdent indent image undo redo hideKeyboard`;
 lists `.all`, `.basic`. Separators are automatic between groups; tools the configuration rules out stay hidden.
+Per-tool overrides: `toolbarIcons: [RichEditorTool: RichEditorToolIcon]` (`.system("sf.symbol")`,
+`.asset("Name", bundle:)`, `.image(UIImage)`; drawn as templates) and `toolbarLabels: [RichEditorTool: String]`
+(VoiceOver + tooltip). Defaults: `tool.defaultIcon`, `tool.defaultLabel`.
 
 ### RichColor
 Palette `.default .gray .brown .orange .yellow .green .blue .purple .pink .red` (dark-mode aware),
