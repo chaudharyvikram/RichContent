@@ -6,6 +6,30 @@ One iOS component for email / meeting bodies: **HTML, Markdown, plain text,
 **Demo app:** `Demo/RichContentDemo.xcodeproj`: a notes app, an email
 composer and a viewer gallery built on this package (see `Demo/README.md`).
 
+## Installation
+
+Swift Package Manager, iOS 16+, no dependencies.
+
+**Xcode:** File → Add Package Dependencies…, enter
+`https://github.com/chaudharyvikram/RichContent.git`, pick **Up to Next Major
+Version** from `1.0.0`, and add the **RichContent** library to your app target.
+
+**Package.swift:**
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/chaudharyvikram/RichContent.git", from: "1.0.0")
+],
+targets: [
+    .target(name: "MyApp", dependencies: [
+        .product(name: "RichContent", package: "RichContent")
+    ])
+]
+```
+
+If the repository is private, add a GitHub account with access in Xcode →
+Settings → Accounts (and give CI a token or SSH key) so the package can be fetched.
+
 ## Use
 
 ```swift
