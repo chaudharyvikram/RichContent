@@ -80,6 +80,9 @@ public final class RichTableAttachment: EditorBlockAttachment {
     /// Heights of cell contents measured by live cell editors ([row][column]).
     private var measuredHeights: [[CGFloat?]] = []
     private var cachedLayout: (available: CGFloat, layout: Layout)?
+    private var displayIsStale = false
+    /// The width the table was last laid out for (cell editors use it too).
+    var lastAvailableWidth: CGFloat? { cachedLayout?.available }
     /// Off while cell editors are shown on top of the table.
     var drawsCellContent = true {
         didSet { if drawsCellContent != oldValue { invalidate() } }
@@ -105,12 +108,41 @@ public final class RichTableAttachment: EditorBlockAttachment {
         invalidate()
     }
 
-    @MainActor
-    func update(style: RichContentStyle) {
-        guard style != self.style else { return }
+    /// `true` when the style changed (live cell editors need rebuilding).
+    @MainActor @discardableResult
+    func update(style: RichContentStyle) -> Bool {
+        guard style != self.style else { return false }
         self.style = style
         rebuildDisplay()
         invalidate()
+        return true
+    }
+
+    /// One cell edited in place: no full rebuild while cell editors cover
+    /// the table (its drawing is refreshed when they go away).
+    @MainActor
+    func setCell(row: Int, column: Int, blocks: [EditorBlock]) {
+        guard table.rows.indices.contains(row), table.rows[row].indices.contains(column) else { return }
+        table.rows[row][column] = blocks
+        if drawsCellContent {
+            let cellStyle = Self.cellStyle(style, header: table.hasHeaderRow && row == 0)
+            display[row][column] = EditorDocument.attributedString(from: blocks, style: cellStyle)
+            cachedLayout = nil
+            invalidate()
+        } else {
+            displayIsStale = true
+        }
+    }
+
+    /// Cell editors cover the table (on) or it draws its cells itself (off).
+    @MainActor
+    func showsCellEditors(_ shown: Bool) {
+        if !shown, displayIsStale {
+            let heights = measuredHeights
+            rebuildDisplay()
+            if heights.count == measuredHeights.count { measuredHeights = heights }
+        }
+        drawsCellContent = !shown
     }
 
     /// A live cell editor's content height; relayouts when it changes.
@@ -141,6 +173,7 @@ public final class RichTableAttachment: EditorBlockAttachment {
         }
         measuredHeights = table.rows.map { $0.map { _ in nil } }
         cachedLayout = nil
+        displayIsStale = false
     }
 
     // MARK: Layout
@@ -184,9 +217,10 @@ public final class RichTableAttachment: EditorBlockAttachment {
         format.opaque = false
         return UIGraphicsImageRenderer(size: imageBounds.size, format: format).image { context in
             let bounds = CGRect(origin: .zero, size: imageBounds.size)
+            // Cell editors draw the grid themselves (it scrolls with them).
+            guard drawsCellContent else { return }
             context.cgContext.clip(to: bounds)
             Self.drawGrid(layout, hasHeaderRow: table.hasHeaderRow, in: bounds)
-            guard drawsCellContent else { return }
             let pad = Self.cellPadding
             for (r, row) in display.enumerated() {
                 for (c, cell) in row.enumerated() where cell.length > 0 {

@@ -168,15 +168,37 @@ let editor = RichEditorController(style: .email, configuration: config)
 
 ## Custom toolbar (instead of RichEditorToolbar)
 
-Bind to the controller's published state:
+Bind to the published state of `editor.focusedEditor` (a table cell's
+editor while a cell is edited, otherwise `editor` itself) and send formatting
+there; table structure goes to `editor`:
 
 ```swift
-HStack {
-    Button { editor.toggle(.bold) } label: { Image(systemName: "bold") }
-        .foregroundStyle(editor.activeFormats.contains(.bold) ? Color.accentColor : .primary)
-    Button { editor.toggleBlock(.bulletList) } label: { Image(systemName: "list.bullet") }
-    Button { editor.undo() } label: { Image(systemName: "arrow.uturn.backward") }
-        .disabled(!editor.canUndo)
+struct MyBar: View {
+    @ObservedObject var editor: RichEditorController          // the document
+    var body: some View { MyBarButtons(target: editor.focusedEditor, document: editor) }
+}
+
+struct MyBarButtons: View {
+    @ObservedObject var target: RichEditorController          // where the caret is
+    let document: RichEditorController
+    var body: some View {
+        HStack {
+            Button { target.toggle(.bold) } label: { Image(systemName: "bold") }
+                .foregroundStyle(target.activeFormats.contains(.bold) ? Color.accentColor : .primary)
+            Button { target.toggleBlock(.bulletList) } label: { Image(systemName: "list.bullet") }
+            Button { target.undo() } label: { Image(systemName: "arrow.uturn.backward") }
+                .disabled(!target.canUndo)
+            if document.isInTable {
+                Menu("Table") {
+                    Button("Row below") { document.insertTableRow(below: true) }
+                    Button("Column right") { document.insertTableColumn(right: true) }
+                    Button("Delete table", role: .destructive) { document.deleteTable() }
+                }
+            } else {
+                Button { document.insertTable() } label: { Image(systemName: "tablecells") }
+            }
+        }
+    }
 }
 ```
 

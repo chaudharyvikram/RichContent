@@ -572,4 +572,119 @@ final class EditorBehaviorTests: XCTestCase {
         XCTAssertEqual(blocks, ["paragraph@1: html", "heading2@1: md"])
         XCTAssertEqual(editor.markdown, "html\n\n## md")
     }
+
+    // MARK: Tables
+
+    private let tableHTML = #"<table data-type="table"><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table><p>after</p>"#
+
+    /// Lays the document out and returns the editor laid over its table.
+    private func tableView() throws -> EditorTableView {
+        textView.setNeedsLayout()
+        textView.layoutIfNeeded()
+        return try XCTUnwrap(textView.tableViews.values.first)
+    }
+
+    /// Types into a cell's editor like the keyboard.
+    private func type(_ string: String, in cell: RichEditorController) {
+        let tv = cell.textView!
+        cell.textViewDidBeginEditing(tv)
+        let range = NSRange(location: tv.textStorage.length, length: 0)
+        tv.textStorage.replaceCharacters(in: range, with: NSAttributedString(string: string, attributes: tv.typingAttributes))
+        tv.selectedRange = NSRange(location: range.location + (string as NSString).length, length: 0)
+        cell.textViewDidChange(tv)
+    }
+
+    func testTableCellsAreEditedInPlace() throws {
+        load(tableHTML)
+        let table = try tableView()
+        XCTAssertEqual(table.cells.count, 2)
+        XCTAssertEqual(table.cells[0].count, 2)
+        XCTAssertFalse(table.attachment.drawsCellContent, "cell editors draw the cells")
+
+        var changes = 0
+        editor.onChange = { _ in changes += 1 }
+        let cell = table.cells[1][0]
+        type("0", in: cell)
+        XCTAssertGreaterThan(changes, 0)
+        XCTAssertTrue(editor.html.contains("10"), editor.html)
+        XCTAssertEqual(blocks.first, "table@1[header]: A|B / 10|2")
+    }
+
+    func testToolbarFormatsTheFocusedCell() throws {
+        load(tableHTML)
+        let cell = try tableView().cells[1][1]
+        cell.textViewDidBeginEditing(cell.textView!)
+        XCTAssertTrue(editor.focusedEditor === cell)
+        XCTAssertTrue(editor.isInTable)
+        XCTAssertTrue(editor.isFocused)
+
+        cell.textView!.selectedRange = NSRange(location: 0, length: 1)
+        editor.focusedEditor.toggle(.bold)
+        XCTAssertTrue(editor.html.contains("<strong>2</strong>"), editor.html)
+        XCTAssertTrue(editor.html.contains("after"))
+    }
+
+    func testCellsDoNotNestTablesOrShowHandles() throws {
+        load(tableHTML)
+        let cell = try tableView().cells[0][0]
+        XCTAssertFalse(cell.configuration.allowedBlocks.contains(.table))
+        XCTAssertFalse(cell.configuration.showsBlockHandles)
+        XCTAssertFalse(RichEditorCommand.catalog(cell.configuration).contains { $0.action == .block(.table) })
+        XCTAssertTrue(RichEditorCommand.catalog(editor.configuration).contains { $0.action == .block(.table) })
+    }
+
+    func testInsertTable() throws {
+        load("<p>before</p>")
+        caretAtEnd()
+        editor.insertTable(rows: 2, columns: 3)
+        XCTAssertEqual(Array(blocks.prefix(2)), ["paragraph@1: before", "table@1[header]: || / ||"])
+        let table = try tableView()
+        XCTAssertEqual(table.cells.count, 2)
+        XCTAssertEqual(table.cells[0].count, 3)
+        XCTAssertTrue(editor.html.contains("<table"), editor.html)
+    }
+
+    func testTableRowsColumnsAndHeader() throws {
+        load(tableHTML)
+        let cell = try tableView().cells[1][0]
+        cell.textViewDidBeginEditing(cell.textView!)
+
+        editor.insertTableRow(below: true)
+        XCTAssertEqual(blocks.first, "table@1[header]: A|B / 1|2 / |")
+        editor.insertTableColumn(right: false)
+        XCTAssertEqual(blocks.first, "table@1[header]: |A|B / |1|2 / ||")
+        editor.deleteTableColumn()
+        XCTAssertEqual(blocks.first, "table@1[header]: A|B / 1|2 / |")
+        editor.deleteTableRow()
+        XCTAssertEqual(blocks.first, "table@1[header]: A|B / 1|2")
+        editor.toggleTableHeaderRow()
+        XCTAssertEqual(blocks.first, "table@1: A|B / 1|2")
+        XCTAssertFalse(editor.tableHasHeaderRow)
+    }
+
+    func testTabMovesBetweenCellsAndAddsARow() throws {
+        load(tableHTML)
+        let table = try tableView()
+        let last = table.cells[1][1]
+        last.textViewDidBeginEditing(last.textView!)
+        XCTAssertTrue(last.moveToAdjacentCell(forward: true))
+        XCTAssertEqual(blocks.first, "table@1[header]: A|B / 1|2 / |")
+        XCTAssertEqual(editor.focusedEditor.tableCell?.row, 2)
+        XCTAssertEqual(editor.focusedEditor.tableCell?.column, 0)
+
+        let first = try tableView().cells[0][0]
+        XCTAssertTrue(first.moveToAdjacentCell(forward: false), "stays in the first cell")
+        XCTAssertTrue(first.moveToAdjacentCell(forward: true))
+        XCTAssertEqual(blocks.first, "table@1[header]: A|B / 1|2 / |", "no row added inside the table")
+    }
+
+    func testDeleteTable() throws {
+        load(tableHTML)
+        let cell = try tableView().cells[0][0]
+        cell.textViewDidBeginEditing(cell.textView!)
+        editor.deleteTable()
+        XCTAssertEqual(blocks, ["paragraph@1: after"])
+        textView.layoutIfNeeded()
+        XCTAssertTrue(textView.tableViews.isEmpty)
+    }
 }

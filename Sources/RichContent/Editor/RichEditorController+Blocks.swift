@@ -86,6 +86,7 @@ extension RichEditorController {
     public func setBlock(_ type: RichBlockType) {
         guard configuration.allowedBlocks.contains(type) else { return }
         if type == .divider { insertDivider(); return }
+        if type == .table { insertTable(); return }
         if type == .image { textView?.presentImagePicker(); return }
         guard let tv = textView else { return }
 

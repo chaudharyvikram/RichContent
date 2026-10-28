@@ -33,6 +33,7 @@ public struct RichEditorCommand: Identifiable, Equatable {
             (.callout, "Make writing stand out.", ["callout", "note", "info", "tip", "warning", "box"]),
             (.codeBlock, "Capture a code snippet.", ["code", "snippet", "pre", "```"]),
             (.divider, "Visually divide blocks.", ["divider", "line", "hr", "separator", "---"]),
+            (.table, "Add a table with a header row.", ["table", "grid", "rows", "columns", "cells"]),
             (.image, "Upload or embed with a link.", ["image", "photo", "picture", "img", "media"])
         ]
         for (type, subtitle, keywords) in blocks where config.allowedBlocks.contains(type) {

@@ -65,6 +65,16 @@ public final class RichEditorTextView: UITextView {
         didSet { clipsToBounds = isScrollEnabled }
     }
 
+    /// Text insets used instead of the style's (table cells).
+    var fixedInsets: UIEdgeInsets?
+    /// Undo history of its own instead of the window's (table cells).
+    var ownUndoManager: UndoManager?
+    public override var undoManager: UndoManager? { ownUndoManager ?? super.undoManager }
+    /// Table blocks and their characters; `nil` until scanned after a change.
+    var tableRanges: [(RichTableAttachment, NSRange)]?
+    /// The in-place editor laid over each table block.
+    var tableViews: [ObjectIdentifier: EditorTableView] = [:]
+
     /// `false` when the host shows the quoted original itself (SwiftUI's
     /// `RichContentEditor` stacks it below a non-scrolling editor).
     var showsQuotedOriginal = true
@@ -125,8 +135,8 @@ public final class RichEditorTextView: UITextView {
 
     func apply(_ style: RichContentStyle) {
         let side = sideInset(style)
-        textContainerInset = UIEdgeInsets(top: max(style.verticalPadding, 8), left: side,
-                                          bottom: max(style.verticalPadding, 8) + 8, right: side)
+        textContainerInset = fixedInsets ?? UIEdgeInsets(top: max(style.verticalPadding, 8), left: side,
+                                                         bottom: max(style.verticalPadding, 8) + 8, right: side)
         editorLayoutManager.style = style
         editorLayoutManager.accentColor = style.linkColor
         editorLayoutManager.commandHint = editorController?.configuration.commandHint ?? ""
@@ -165,6 +175,7 @@ public final class RichEditorTextView: UITextView {
         let size = placeholderLabel.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
         placeholderLabel.frame = CGRect(x: inset.left, y: inset.top, width: width, height: size.height)
         layoutQuotedOriginal()
+        layoutTables()
         reportContentHeight()
         updateOverlays()
     }
@@ -184,11 +195,16 @@ public final class RichEditorTextView: UITextView {
     /// show the caret (never to the end of the document).
     func revealCaretInEnclosingScrollView() {
         guard !isScrollEnabled, isFirstResponder, let caret = selectedTextRange?.end else { return }
+        // Every scrolling ancestor, innermost first: a wide table's own
+        // scroll view (sideways), then the document (up / down).
+        let caretRect = caretRect(for: caret).insetBy(dx: -4, dy: -12)
         var view = superview
-        while let candidate = view, !((candidate as? UIScrollView)?.isScrollEnabled ?? false) { view = candidate.superview }
-        guard let scrollView = view as? UIScrollView else { return }
-        let rect = convert(caretRect(for: caret).insetBy(dx: 0, dy: -12), to: scrollView)
-        scrollView.scrollRectToVisible(rect, animated: false)
+        while let candidate = view {
+            if let scrollView = candidate as? UIScrollView, scrollView.isScrollEnabled {
+                scrollView.scrollRectToVisible(convert(caretRect, to: scrollView), animated: false)
+            }
+            view = candidate.superview
+        }
     }
 
     @objc private func keyboardDidShow() {
@@ -377,6 +393,8 @@ public final class RichEditorTextView: UITextView {
         let point = gestureRecognizer.location(in: self)
         // The quoted original is read-only: no caret or selection there, only scrolling.
         if isQuotedOriginalTouch(gestureRecognizer) { return false }
+        // Tables are edited by their cell editors, not by this text view.
+        if gestureRecognizer !== panGestureRecognizer, tableView(at: point) != nil { return false }
         if gestureRecognizer === markerTap { return markerHit(at: point) != nil || failedUploadImage(at: point) != nil }
         // Touches on the menus / handle belong to them, not to text selection.
         for overlay in [slashMenu, selectionToolbar, blockHandle] as [UIView]
@@ -548,9 +566,13 @@ public final class RichEditorTextView: UITextView {
     @objc private func slashEscape() { editorController?.cancelSlashCommand() }
     @objc private func tabKey() {
         guard let controller = editorController else { return }
-        if controller.blockType == .codeBlock { insertText("    ") } else { controller.indent() }
+        if controller.blockType == .codeBlock { insertText("    ") }
+        else if !controller.moveToAdjacentCell(forward: true) { controller.indent() }
     }
-    @objc private func shiftTabKey() { editorController?.outdent() }
+    @objc private func shiftTabKey() {
+        guard let controller = editorController, !controller.moveToAdjacentCell(forward: false) else { return }
+        controller.outdent()
+    }
     @objc private func lineBreakKey() { editorController?.insertLineBreak() }
     @objc private func commandReturn() {
         guard let controller = editorController else { return }

@@ -116,10 +116,11 @@ Content in / out
 
 State (`@Published`, read-only) — drive custom toolbars
 - `activeFormats: Set<RichInlineFormat>`, `blockType`, `listLevel`, `isChecked`,
-  `textColor`, `highlight`, `isFocused`, `isEmpty`, `hasSelection`,
+  `textColor`, `highlight`, `isFocused` (also while a table cell is edited), `isEmpty`, `hasSelection`,
   `canUndo`, `canRedo`, `canIndent`, `canOutdent`,
   `pendingImageUploads`, `failedImageUploads`
 - `selectedRange`, `selectedText`, `selectedLink`, `allImagesUploaded`
+- `activeCellEditor` (`@Published`), `focusedEditor` (cell editor or self — send formatting here), `isInTable`, `tableHasHeaderRow`
 
 Formatting
 - `toggle(_ RichInlineFormat)` — `.bold .italic .underline .strikethrough .code .link`
@@ -127,10 +128,12 @@ Formatting
 - `setLink(_ url: URL?, title:range:)`, `beginLinkEditing()` (prompt)
 - `presentColorPicker(background:wholeBlock:)` (system picker)
 
-Blocks — `RichBlockType`: `paragraph heading1 heading2 heading3 bulletList numberedList todo toggle quote callout codeBlock divider image`
+Blocks — `RichBlockType`: `paragraph heading1 heading2 heading3 bulletList numberedList todo toggle quote callout codeBlock divider image table`
 - `setBlock(_:)`, `toggleBlock(_:)`, `indent()`, `outdent()`
 - `toggleChecked()`, `toggleCollapsed()`, `setCalloutEmoji(_:)`, `setCodeLanguage(_:)`
 - `insertDivider()`, `insertImage(_ UIImage, alt:)`, `insertImage(url:alt:)`
+- Tables: `insertTable(rows:columns:)`, `insertTableRow(below:)`, `insertTableColumn(right:)`,
+  `deleteTableRow()`, `deleteTableColumn()`, `toggleTableHeaderRow()`, `deleteTable()` (act on the cell being edited)
 - `duplicateBlock()`, `deleteBlock()`, `moveBlockUp()`, `moveBlockDown()`
 - `undo()`, `redo()`, `focus()`, `resignFocus()`, `showCommandMenu()`
 
@@ -161,7 +164,7 @@ Presets `.standard`, `.email` (no toggles/callouts, no command hint).
 | `showsImageUploadFailureAlert` | `true` | Retry / Remove Image alert |
 | `toolbarTools: [RichEditorTool]` | `.all` | format-bar buttons, in order |
 
-`RichEditorTool`: `addBlock turnInto bold italic underline strikethrough code link color todo bulletList numberedList toggle outdent indent image undo redo hideKeyboard`;
+`RichEditorTool`: `addBlock turnInto bold italic underline strikethrough code link color todo bulletList numberedList toggle outdent indent image table undo redo hideKeyboard`;
 lists `.all`, `.basic`. Separators are automatic between groups; tools the configuration rules out stay hidden.
 Per-tool overrides: `toolbarIcons: [RichEditorTool: RichEditorToolIcon]` (`.system("sf.symbol")`,
 `.asset("Name", bundle:)`, `.image(UIImage)`; drawn as templates) and `toolbarLabels: [RichEditorTool: String]`

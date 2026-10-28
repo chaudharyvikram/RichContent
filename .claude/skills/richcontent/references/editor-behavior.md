@@ -7,8 +7,8 @@ document model (`attributedText`), or something the package may not support.
 
 Blocks: Text, Heading 1–3, Bulleted list, Numbered list (1. → a. → i. by
 level), To-do, Toggle (hidden children are kept and exported), Quote,
-Callout (emoji icon, background color), Code (language), Divider, Image.
-Any block nests under another (Tab / Shift-Tab, indent buttons); children
+Callout (emoji icon, background color), Code (language), Divider, Image,
+Table. Any block nests under another (Tab / Shift-Tab, indent buttons); children
 move with their parent. Inline: bold, italic, underline, strikethrough, code,
 link, 10 text colors + 10 highlights (dark-mode aware), and custom colors
 from the system picker.
@@ -28,6 +28,22 @@ then leaves the list; after a heading or quote it starts text; inside code
 and callouts it adds a line (Return on an empty last line leaves); in an open
 toggle it goes inside. Backspace at block start: turn into text → outdent →
 join with the block above; on an image / divider it removes it.
+
+Tables: inserted from the format bar's Table tool, `/table` or Turn into
+(3 × 3, header row). Each cell is a full nested `RichEditorController`, so
+every tool works in cells (no nested tables, no ⋮⋮ handles in cells). While a
+cell is edited the document's controller has `activeCellEditor` /
+`focusedEditor` = the cell's editor and `isInTable == true`; `isFocused` stays
+`true`; `onChange` fires on the document's controller for cell edits. The
+Table tool becomes a menu in a table: rows above / below, columns left /
+right, header row, delete row / column / table (same as
+`insertTableRow(below:)`, `insertTableColumn(right:)`, `toggleTableHeaderRow()`,
+`deleteTableRow()`, `deleteTableColumn()`, `deleteTable()`). Tab / ⇧Tab move
+between cells; Tab in the last cell adds a row. Equal-width columns (≥ 96 pt);
+wide tables scroll sideways. Import: data tables (`<th>`, borders,
+`data-type="table"`) and Markdown pipe tables become table blocks; layout
+tables are flattened. Export: `<table data-type="table">` with `<th>` header,
+Markdown pipe table, tab-separated plain text.
 
 Paste: HTML from Safari, Mail, Notes, Google Docs and Notion maps onto the
 same blocks; a URL pasted over a selection links it; images become image
@@ -98,7 +114,7 @@ HTML imports as the exported hex color.) In HTML, colors export as
 
 ## Not supported (don't promise these)
 
-- Editor: tables, mentions / dates, synced blocks, columns, page links,
+- Editor: merged table cells (colspan / rowspan) and column widths, mentions / dates, synced blocks, columns, page links,
   toggle headings, image captions / resizing, code syntax highlighting.
 - Pixel-exact editing of designed emails (layout CSS is dropped on import).
 - Reference-style Markdown images (`![alt][ref]`) show their alt text only.

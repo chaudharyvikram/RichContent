@@ -180,11 +180,32 @@ Text, Heading 1–3, Bulleted list, Numbered list (1. → a. → i. by level),
 To-do (tap the checkbox), Toggle (tap the arrow; hidden content is kept and
 exported), Quote, Callout (tap the icon to change it; color), Code (language),
 Divider, Image (photo library, paste, or link; remote images load
-asynchronously). Any block can be nested under another (Tab / Shift-Tab, or
+asynchronously), Table (see below). Any block can be nested under another (Tab / Shift-Tab, or
 the indent buttons); children move with their parent.
 
 Inline: bold, italic, underline, strikethrough, inline code, link, and
 Notion's 10 text colors and 10 highlight colors (dark-mode aware).
+
+### Tables
+
+Insert one with the format bar's Table button, `/table`, or the Turn into
+menu (3 × 3 with a header row). Tap a cell and type: every cell is a full
+editor, so all tools work inside it (formats, colors, links, lists, to-dos,
+quotes, code, images, …; no tables inside tables). The format bar follows the
+caret into the cell. Inside a table its Table button becomes a menu: insert
+row above / below, insert column left / right, header row on / off, delete
+row, column or table. Tab / ⇧Tab (hardware keyboard) move between cells; Tab
+in the last cell adds a row. Columns share the width (at least 96 pt each);
+wider tables scroll sideways. Custom bars can use the same API:
+`insertTable(rows:columns:)`, `insertTableRow(below:)`,
+`insertTableColumn(right:)`, `deleteTableRow()`, `deleteTableColumn()`,
+`toggleTableHeaderRow()`, `deleteTable()`, `isInTable`, `tableHasHeaderRow`,
+and `focusedEditor` (the cell's editor while a cell is edited; send formatting
+there).
+
+Imported HTML tables become table blocks when they hold data
+(`<th>`, borders, or `data-type="table"`); layout tables from designed emails
+are flattened into text instead. Markdown pipe tables import too.
 
 ### Ways to edit
 
@@ -194,7 +215,7 @@ Notion's 10 text colors and 10 highlight colors (dark-mode aware).
 | Markdown shortcuts | At the start of a block: `- ` `* ` `+ ` bullets, `1. ` numbers, `[] ` / `[x] ` to-dos, `# ` `## ` `### ` headings, `> ` toggle, `" ` quote, ```` ``` ```` code, `---` divider. Inline: `**bold**`, `*italic*`, `_italic_`, `~strike~`, `` `code` `` (on the closing marker). Undo restores what you typed. |
 | Selection toolbar | Appears under selected text: Turn into, B I U S, code, link, color. |
 | Block handle ⋮⋮ | Beside the current block. Tap: Turn into, Color, Check / Expand, Icon, Language, Indent / Outdent, Move up / down, Duplicate, Delete. Drag: move the block (with its children) anywhere; it takes the level where it lands. |
-| Format bar | `+`, Turn into, B I U S, code, link, color, to-do, bullets, numbers, toggle, outdent / indent, image, undo / redo, hide keyboard by default; choose with `toolbarTools` (see "Format bar"). |
+| Format bar | `+`, Turn into, B I U S, code, link, color, to-do, bullets, numbers, toggle, outdent / indent, image, table, undo / redo, hide keyboard by default; choose with `toolbarTools` (see "Format bar"). |
 | Hardware keyboard | ⌘B ⌘I ⌘U, ⇧⌘S strike, ⌘E code, ⌘K link, Tab / ⇧Tab, ⇧↩ line break, ⌘↩ check / expand, ⌘D duplicate, ⇧⌘↑ / ↓ move, ⌥⌘0–8 turn into. |
 | VoiceOver | Rotor actions on the current block: check, expand, indent, outdent, move, duplicate, delete. |
 
@@ -236,7 +257,10 @@ HTML is the lossless format: to-dos are `<ul data-type="todo">` with
 colors `<span data-color>` / `data-highlight` with inline styles, nesting
 inside `<li>` or `<div data-type="indent">`. It renders sensibly in mail
 clients and in `RichContentView`. Markdown keeps structure but not colors,
-callout styling or toggle state (toggles become list items).
+callout styling or toggle state (toggles become list items). Tables export
+as `<table data-type="table">` (`<th>` for the header row, any blocks in
+cells), as Markdown pipe tables (line breaks as `<br>`), and as
+tab-separated rows in plain text.
 `replyHTML(quoting:attribution:)` builds an email reply around the original.
 
 ### Replying with the original below
@@ -281,9 +305,9 @@ config.toolbarLabels = [.bold: "Fett", .italic: "Kursiv"]
 
 Tools: `addBlock`, `turnInto`, `bold`, `italic`, `underline`, `strikethrough`,
 `code`, `link`, `color`, `todo`, `bulletList`, `numberedList`, `toggle`,
-`outdent`, `indent`, `image`, `undo`, `redo`, `hideKeyboard`. Tools the
-configuration rules out (Image without `.image` in `allowedBlocks`, `addBlock`
-without `slashCommands`) stay hidden.
+`outdent`, `indent`, `image`, `table`, `undo`, `redo`, `hideKeyboard`. Tools
+the configuration rules out (Image / Table without `.image` / `.table` in
+`allowedBlocks`, `addBlock` without `slashCommands`) stay hidden.
 
 ### Image uploads
 
@@ -325,7 +349,7 @@ all projects).
 ## Not covered yet
 
 - Reference-style Markdown images (`![alt][ref]`) show their alt text only.
-- Editor: tables, mentions / dates, synced blocks, columns, page links,
+- Editor: merged table cells and column widths, mentions / dates, synced blocks, columns, page links,
   toggle headings, image captions / resizing, and code syntax highlighting.
 - `cid:` inline attachment images: map them to `data:` URLs before passing the HTML.
 - Text selection across a native block and a web block.

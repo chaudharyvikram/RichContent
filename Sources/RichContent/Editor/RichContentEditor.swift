@@ -135,10 +135,10 @@ private struct RichEditorToolbarHost: View {
 
 /// Format bar (Liquid Glass on iOS 26). Usable on its own, e.g. in a custom
 /// keyboard accessory. Shows `configuration.toolbarTools` (all by default),
-/// or `tools` when given, in that order.
+/// or `tools` when given, in that order. While a table cell is being edited
+/// the tools act on that cell (`controller.focusedEditor`).
 public struct RichEditorToolbar: View {
     @ObservedObject private var controller: RichEditorController
-    @Environment(\.richContentStyle) private var style
     private let customTools: [RichEditorTool]?
 
     public init(controller: RichEditorController, tools: [RichEditorTool]? = nil) {
@@ -146,23 +146,37 @@ public struct RichEditorToolbar: View {
         self.customTools = tools
     }
 
-    private var allowed: Set<RichBlockType> { controller.configuration.allowedBlocks }
+    public var body: some View {
+        RichEditorToolbarContent(controller: controller.focusedEditor, root: controller, customTools: customTools)
+    }
+}
+
+/// The bar's buttons: actions and state from `controller` (the focused
+/// editor), configuration from `root` (the document's editor).
+private struct RichEditorToolbarContent: View {
+    @ObservedObject var controller: RichEditorController
+    @ObservedObject var root: RichEditorController
+    @Environment(\.richContentStyle) private var style
+    let customTools: [RichEditorTool]?
+
+    private var allowed: Set<RichBlockType> { root.configuration.allowedBlocks }
 
     /// Requested tools, in order, without duplicates or ones the
     /// configuration rules out (e.g. Image when images aren't allowed).
     private var requested: [RichEditorTool] {
         var seen = Set<RichEditorTool>()
-        return (customTools ?? controller.configuration.toolbarTools).filter { seen.insert($0).inserted && isAvailable($0) }
+        return (customTools ?? root.configuration.toolbarTools).filter { seen.insert($0).inserted && isAvailable($0) }
     }
 
     private func isAvailable(_ tool: RichEditorTool) -> Bool {
         switch tool {
-        case .addBlock: return controller.configuration.slashCommands
+        case .addBlock: return root.configuration.slashCommands
         case .todo: return allowed.contains(.todo)
         case .bulletList: return allowed.contains(.bulletList)
         case .numberedList: return allowed.contains(.numberedList)
         case .toggle: return allowed.contains(.toggle)
         case .image: return allowed.contains(.image)
+        case .table: return allowed.contains(.table)
         default: return true
         }
     }
@@ -170,7 +184,7 @@ public struct RichEditorToolbar: View {
     public var body: some View {
         HStack(spacing: 0) {
             tools
-            if controller.isFocused, requested.contains(.hideKeyboard) {
+            if root.isFocused, requested.contains(.hideKeyboard) {
                 // Pinned outside the scrolling tools, always one tap away.
                 divider
                 icon(.hideKeyboard) { controller.resignFocus() }
@@ -222,6 +236,8 @@ public struct RichEditorToolbar: View {
             icon(tool, enabled: controller.canIndent) { controller.indent() }
         case .image:
             icon(tool) { controller.textView?.presentImagePicker() }
+        case .table:
+            if root.activeCellEditor != nil { tableMenu } else { icon(tool) { root.insertTable() } }
         case .undo:
             icon(tool, enabled: controller.canUndo) { controller.undo() }
         case .redo:
@@ -236,11 +252,11 @@ public struct RichEditorToolbar: View {
     private var accent: Color { Color(uiColor: style.linkColor) }
 
     private func iconOf(_ tool: RichEditorTool) -> RichEditorToolIcon {
-        controller.configuration.toolbarIcons[tool] ?? tool.defaultIcon
+        root.configuration.toolbarIcons[tool] ?? tool.defaultIcon
     }
 
     private func labelOf(_ tool: RichEditorTool) -> String {
-        controller.configuration.toolbarLabels[tool] ?? tool.defaultLabel
+        root.configuration.toolbarLabels[tool] ?? tool.defaultLabel
     }
 
     private var divider: some View {
@@ -268,11 +284,40 @@ public struct RichEditorToolbar: View {
                 Divider()
                 Button { controller.insertDivider() } label: { Label("Divider", systemImage: RichBlockType.divider.symbolName) }
             }
+            if allowed.contains(.table), root.activeCellEditor == nil {
+                Button { root.insertTable() } label: { Label("Table", systemImage: RichBlockType.table.symbolName) }
+            }
         } label: {
             ToolbarIcon(icon: iconOf(.turnInto), isActive: controller.blockType != .paragraph, accent: accent)
         }
         .accessibilityLabel("\(labelOf(.turnInto)), \(controller.blockType.title)")
         .help(labelOf(.turnInto))
+    }
+
+    /// Rows, columns and the header row of the table being edited.
+    private var tableMenu: some View {
+        Menu {
+            Section {
+                Button { root.insertTableRow(below: false) } label: { Label("Insert row above", systemImage: "arrow.up") }
+                Button { root.insertTableRow(below: true) } label: { Label("Insert row below", systemImage: "arrow.down") }
+                Button { root.insertTableColumn(right: false) } label: { Label("Insert column left", systemImage: "arrow.left") }
+                Button { root.insertTableColumn(right: true) } label: { Label("Insert column right", systemImage: "arrow.right") }
+            }
+            Section {
+                Button { root.toggleTableHeaderRow() } label: {
+                    Label("Header row", systemImage: root.tableHasHeaderRow ? "checkmark" : "rectangle.topthird.inset.filled")
+                }
+            }
+            Section {
+                Button(role: .destructive) { root.deleteTableRow() } label: { Label("Delete row", systemImage: "trash") }
+                Button(role: .destructive) { root.deleteTableColumn() } label: { Label("Delete column", systemImage: "trash") }
+                Button(role: .destructive) { root.deleteTable() } label: { Label("Delete table", systemImage: "tablecells.badge.ellipsis") }
+            }
+        } label: {
+            ToolbarIcon(icon: iconOf(.table), isActive: true, accent: accent)
+        }
+        .accessibilityLabel(labelOf(.table))
+        .help(labelOf(.table))
     }
 
     /// Text colors and Background colors, both expanded: color picker, then

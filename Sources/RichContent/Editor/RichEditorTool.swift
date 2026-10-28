@@ -21,6 +21,9 @@ public enum RichEditorTool: String, Hashable, CaseIterable, Sendable {
     case outdent, indent
     /// Photo library (needs `.image` in `allowedBlocks`).
     case image
+    /// Inserts a table (needs `.table` in `allowedBlocks`); inside a table,
+    /// a menu for rows, columns and the header row.
+    case table
     case undo, redo
     /// Dismisses the keyboard; pinned at the trailing end.
     case hideKeyboard
@@ -31,7 +34,7 @@ public enum RichEditorTool: String, Hashable, CaseIterable, Sendable {
         case .addBlock, .turnInto: return 0
         case .bold, .italic, .underline, .strikethrough, .code, .link, .color: return 1
         case .todo, .bulletList, .numberedList, .toggle, .outdent, .indent: return 2
-        case .image: return 3
+        case .image, .table: return 3
         case .undo, .redo: return 4
         case .hideKeyboard: return 5
         }
@@ -80,6 +83,7 @@ public extension RichEditorTool {
         case .outdent: return .system("decrease.indent")
         case .indent: return .system("increase.indent")
         case .image: return .system("photo")
+        case .table: return .system("tablecells")
         case .undo: return .system("arrow.uturn.backward")
         case .redo: return .system("arrow.uturn.forward")
         case .hideKeyboard: return .system("keyboard.chevron.compact.down")
@@ -99,6 +103,7 @@ public extension RichEditorTool {
         case .outdent: return "Outdent"
         case .indent: return "Indent"
         case .image: return "Image"
+        case .table: return "Table"
         case .undo: return "Undo"
         case .redo: return "Redo"
         case .hideKeyboard: return "Hide keyboard"

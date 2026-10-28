@@ -67,7 +67,14 @@ public final class RichEditorController: NSObject, ObservableObject {
     @Published public private(set) var isChecked = false
     @Published public private(set) var textColor: RichColor = .default
     @Published public private(set) var highlight: RichColor = .default
-    @Published public private(set) var isFocused = false
+    /// `true` while the caret is in this editor or in one of its table cells.
+    @Published public internal(set) var isFocused = false
+    /// The editor of the table cell being edited, if any (see `focusedEditor`).
+    @Published public internal(set) var activeCellEditor: RichEditorController?
+    /// Set on a table cell's editor: the document's editor and the cell.
+    weak var parentEditor: RichEditorController?
+    weak var tableAttachment: RichTableAttachment?
+    var tableCell: (row: Int, column: Int)?
     @Published public private(set) var isEmpty = true
     @Published public private(set) var hasSelection = false
     @Published public private(set) var canUndo = false
@@ -459,7 +466,9 @@ public final class RichEditorController: NSObject, ObservableObject {
             guard let attachment = value as? EditorBlockAttachment else { return }
             attachment.hostView = tv
             (attachment as? RichImageAttachment)?.loadIfNeeded(allowsRemote: configuration.loadsRemoteImages)
-            (attachment as? RichTableAttachment)?.update(style: style)
+            if let table = attachment as? RichTableAttachment, table.update(style: style) {
+                tv.tableViews[ObjectIdentifier(table)]?.rebuildCells()
+            }
         }
     }
 
@@ -473,6 +482,8 @@ public final class RichEditorController: NSObject, ObservableObject {
         tv.updateOverlays()
         tv.reportContentHeight()
         tv.revealCaretInEnclosingScrollView()
+        tv.tablesDidChange()
+        parentEditor?.cellContentDidChange(self)
         onChange?(self)
     }
 
@@ -605,11 +616,15 @@ extension RichEditorController: UITextViewDelegate {
 
     public func textViewDidBeginEditing(_ textView: UITextView) {
         isFocused = true
+        activeCellEditor = nil
+        parentEditor?.cellDidBeginEditing(self)
         self.textView?.updateOverlays()
     }
 
     public func textViewDidEndEditing(_ textView: UITextView) {
-        isFocused = false
+        // Focus may be moving to a table cell (or back): settle after it lands.
+        DispatchQueue.main.async { [weak self] in self?.refreshFocus() }
+        parentEditor?.cellDidEndEditing(self)
         slash = nil
         self.textView?.redrawDecorations()
         self.textView?.updateOverlays()
