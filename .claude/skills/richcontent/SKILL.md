@@ -8,8 +8,12 @@ description: Implement the RichContent Swift package in an iOS app (SwiftUI or U
 One Swift package (iOS 16+, no dependencies) for **reading** and **editing**
 rich bodies. `import RichContent`.
 
-- Read the API reference only as needed: [references/api.md](references/api.md)
-- Ready-to-adapt code: [references/recipes.md](references/recipes.md)
+Read these only as needed:
+- [references/api.md](references/api.md): every public type, property and method
+- [references/recipes.md](references/recipes.md): ready-to-adapt SwiftUI / UIKit code
+- [references/editor-behavior.md](references/editor-behavior.md): what users can
+  do in the editor (menus, shortcuts, keyboard, paste), the document model and
+  attribute keys, persisting colors, performance, and what is not supported
 
 ## Pick the component
 
@@ -63,6 +67,8 @@ read `html` / `markdown` / `plainText` / `replyHTML()` out of it.
   or `.basic`; per bar: `.richEditorToolbar(editor, tools:)`.
 - **Brand colors in color menus** → `configuration.assetColors = [.asset("Brand")]`.
 - **Image upload to your backend** → recipe "Image uploads".
+- **"Can the editor do X?"** → check "Not supported" in editor-behavior.md
+  before promising a feature; suggest a custom toolbar for custom actions.
 
 ## Checklist before finishing
 

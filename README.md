@@ -194,7 +194,7 @@ Notion's 10 text colors and 10 highlight colors (dark-mode aware).
 | Markdown shortcuts | At the start of a block: `- ` `* ` `+ ` bullets, `1. ` numbers, `[] ` / `[x] ` to-dos, `# ` `## ` `### ` headings, `> ` toggle, `" ` quote, ```` ``` ```` code, `---` divider. Inline: `**bold**`, `*italic*`, `_italic_`, `~strike~`, `` `code` `` (on the closing marker). Undo restores what you typed. |
 | Selection toolbar | Appears under selected text: Turn into, B I U S, code, link, color. |
 | Block handle ⋮⋮ | Beside the current block. Tap: Turn into, Color, Check / Expand, Icon, Language, Indent / Outdent, Move up / down, Duplicate, Delete. Drag: move the block (with its children) anywhere; it takes the level where it lands. |
-| Keyboard toolbar | `+`, Turn into, B I U S, code, link, color, to-do, bullets, numbers, toggle, outdent / indent, image, undo / redo, hide keyboard. |
+| Format bar | `+`, Turn into, B I U S, code, link, color, to-do, bullets, numbers, toggle, outdent / indent, image, undo / redo, hide keyboard by default; choose with `toolbarTools` (see "Format bar"). |
 | Hardware keyboard | ⌘B ⌘I ⌘U, ⇧⌘S strike, ⌘E code, ⌘K link, Tab / ⇧Tab, ⇧↩ line break, ⌘↩ check / expand, ⌘D duplicate, ⇧⌘↑ / ↓ move, ⌥⌘0–8 turn into. |
 | VoiceOver | Rotor actions on the current block: check, expand, indent, outdent, move, duplicate, delete. |
 
@@ -227,8 +227,9 @@ let editor = RichEditorController(style: .email, configuration: config)
 **App colors.** `assetColors` lists named colors from your asset catalog
 (`RichColor.assetBundle`, default `.main`). They appear first and expanded in
 every Color menu (block handle, selection toolbar, keyboard toolbar) and in
-the `/` menu; the built-in palette sits in collapsed "Text colors" /
-"Background colors" sections. Asset colors keep their light / dark variants;
+the `/` menu, above the built-in palette, in both the "Text colors" and
+"Background colors" sections (each also starts with "Choose from color
+picker…"). Asset colors keep their light / dark variants;
 as highlights they're used as a light tint. iOS can't list an asset catalog
 at runtime, so name the colors you want offered. They export as
 `data-color="asset:Brand"` with the light-mode hex as the inline style.

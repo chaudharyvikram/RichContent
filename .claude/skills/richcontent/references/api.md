@@ -67,8 +67,8 @@ Helpers: `style.padding(horizontal:vertical:)`, `style.font(_:relativeTo:)` (Dyn
 | Text | `font`, `textColor`, `secondaryTextColor`, `linkColor`, `codeFont`, `codeBackgroundColor` |
 | Spacing | `lineSpacing`, `paragraphSpacing`, `listIndent` |
 | Quotes | `quoteBarColor`, `quoteBarWidth`, `quoteIndent`, `dimsQuotedText` |
-| Padding | `horizontalPadding`, `verticalPadding`, `webPadding` (`.automatic/.always/.never`), `editorHorizontalPadding` |
-| Behaviour | `htmlRendering` (`.automatic/.native/.web`), `allowsRemoteContent` (default `true`), `forcesBaseFontInWebContent`, `normalizesHTMLFonts`, `detectsLinks`, `preservesMarkdownLineBreaks` |
+| Padding | `horizontalPadding`, `verticalPadding`, `webPadding: WebPadding` (`.automatic/.always/.never`), `editorHorizontalPadding` |
+| Behaviour | `htmlRendering: HTMLRendering` (`.automatic/.native/.web`), `allowsRemoteContent` (default `true`), `forcesBaseFontInWebContent`, `normalizesHTMLFonts`, `detectsLinks`, `preservesMarkdownLineBreaks` |
 
 ## Editing
 
@@ -162,3 +162,13 @@ Palette `.default .gray .brown .orange .yellow .green .blue .purple .pink .red` 
 ### Serializer (no editor instance needed)
 `RichEditorSerializer.html(from:)`, `.markdown(from:)`, `.plainText(from:)`,
 `.replyHTML(_:quoting:attribution:style:)` — input is the editor's `attributedText`.
+
+## Not for app code
+
+`RichEditorController` is the `UITextViewDelegate` of its `RichEditorTextView`
+(`textViewDidChange` etc. are public only for that conformance), and
+`RichWebContentView` is its own `WKNavigationDelegate`. Don't call these
+methods or replace the delegates; use `onChange`, `onOpenURL` and the
+published state instead. Attachment layout overrides (`attachmentBounds`) are
+TextKit hooks. `RichImageAttachment.UploadState` (`.uploading/.failed`) is
+read-only state for drawing; use the controller's upload API.
