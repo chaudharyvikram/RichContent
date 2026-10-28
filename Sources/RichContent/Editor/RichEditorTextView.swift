@@ -148,11 +148,6 @@ public final class RichEditorTextView: UITextView {
         updateOverlays()
     }
 
-    public override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        if isQuotedOriginalTouch(gestureRecognizer) { return false }
-        return super.gestureRecognizerShouldBegin(gestureRecognizer)
-    }
-
     private func focusInfo() -> EditorLayoutManager.Focus? {
         guard isFirstResponder, let controller = editorController, selectedRange.length == 0 else { return nil }
         let p = controller.paragraph(at: selectedRange.location)
@@ -294,6 +289,8 @@ public final class RichEditorTextView: UITextView {
 
     public override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         let point = gestureRecognizer.location(in: self)
+        // The quoted original is read-only: no caret or selection there, only scrolling.
+        if isQuotedOriginalTouch(gestureRecognizer) { return false }
         if gestureRecognizer === markerTap { return markerHit(at: point) != nil }
         // Touches on the menus / handle belong to them, not to text selection.
         for overlay in [slashMenu, selectionToolbar, blockHandle] as [UIView]
