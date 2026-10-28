@@ -356,6 +356,7 @@ final class EditorBehaviorTests: XCTestCase {
         let plain: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 17)]
         textView.textStorage.replaceCharacters(in: range, with: NSAttributedString(string: word, attributes: plain))
         textView.selectedRange = NSRange(location: range.location + (word as NSString).length, length: 0)
+        editor.textViewDidChangeSelection(textView)   // UIKit reports the caret move first
         editor.textViewDidChange(textView)
     }
 

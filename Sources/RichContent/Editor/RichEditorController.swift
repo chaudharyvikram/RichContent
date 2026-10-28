@@ -574,6 +574,8 @@ extension RichEditorController: UITextViewDelegate {
                     s.setAttributes(EditorStyling.attributes(block: BlockInfo(attrs), inline: replacement.inline, style: style),
                                     range: r)
                 }
+                // The selection change may already have read the unstyled word.
+                syncTypingAttributes()
             }
             EditorStyling.normalize(s, in: range, style: style)
             prepareAttachments(in: range)
