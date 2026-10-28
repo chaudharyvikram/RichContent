@@ -286,6 +286,31 @@ public final class RichEditorTextView: UITextView {
         return (start, controller.info(ofParagraphAt: start))
     }
 
+    // With a quoted original below the text, UIKit's own scrolling (on focus,
+    // keyboard, Return, typing on the last line) scrolls to the end of the
+    // scrollable area, i.e. past the whole quoted original. Programmatic
+    // scrolls are capped to what keeps the caret visible; the user's own
+    // drags and flicks are left alone.
+    public override var contentOffset: CGPoint {
+        get { super.contentOffset }
+        set { super.contentOffset = limitingAutoScroll(newValue) }
+    }
+
+    public override func setContentOffset(_ contentOffset: CGPoint, animated: Bool) {
+        super.setContentOffset(limitingAutoScroll(contentOffset), animated: animated)
+    }
+
+    private func limitingAutoScroll(_ target: CGPoint) -> CGPoint {
+        guard appliedQuotedInset > 0, isFirstResponder, drag == nil, !isTracking, !isDragging, !isDecelerating,
+              target.y > super.contentOffset.y, let caret = selectedTextRange?.end else { return target }
+        // Only the keyboard / safe area hides content; the quoted original's inset doesn't.
+        let hiddenBottom = max(adjustedContentInset.bottom - appliedQuotedInset, 0)
+        let caretBottom = caretRect(for: caret).maxY + textContainerInset.bottom
+        let needed = caretBottom - bounds.height + hiddenBottom
+        let limit = max(super.contentOffset.y, needed)
+        return CGPoint(x: target.x, y: min(target.y, limit))
+    }
+
     // The quoted original sits in `contentInset`, which UITextView's own
     // sizing ignores; count it when the view grows with its content.
     public override func sizeThatFits(_ size: CGSize) -> CGSize {
