@@ -128,6 +128,12 @@ final class EditorFormatTests: XCTestCase {
         XCTAssertEqual(info.highlight, .asset("Coral"))
     }
 
+    func testToolbarShowsEveryToolByDefault() {
+        XCTAssertEqual(RichEditorConfiguration().toolbarTools, RichEditorTool.allCases)
+        XCTAssertEqual(RichEditorTool.allCases.last, .hideKeyboard)
+        XCTAssertEqual(RichEditorTool.allCases.compactMap(\.inlineFormat), [.bold, .italic, .underline, .strikethrough, .code])
+    }
+
     func testHiddenEmailPartsAreNotImported() {
         XCTAssertEqual(html("""
         <body><div style="display: none">Preheader \u{2007}\u{034F} \u{2007}\u{034F}<div>nested</div></div>

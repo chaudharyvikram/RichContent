@@ -63,21 +63,24 @@ private struct RichEditorRepresentable: UIViewRepresentable {
 public extension View {
     /// Shows the format bar above the keyboard while the editor is focused
     /// (or always, with `alwaysVisible`).
-    func richEditorToolbar(_ controller: RichEditorController, alwaysVisible: Bool = false) -> some View {
+    /// `tools` overrides `configuration.toolbarTools` for this bar.
+    func richEditorToolbar(_ controller: RichEditorController, tools: [RichEditorTool]? = nil,
+                           alwaysVisible: Bool = false) -> some View {
         safeAreaInset(edge: .bottom, spacing: 0) {
-            RichEditorToolbarHost(controller: controller, alwaysVisible: alwaysVisible)
+            RichEditorToolbarHost(controller: controller, tools: tools, alwaysVisible: alwaysVisible)
         }
     }
 }
 
 private struct RichEditorToolbarHost: View {
     @ObservedObject var controller: RichEditorController
+    let tools: [RichEditorTool]?
     let alwaysVisible: Bool
 
     var body: some View {
         ZStack {
             if alwaysVisible || controller.isFocused {
-                RichEditorToolbar(controller: controller)
+                RichEditorToolbar(controller: controller, tools: tools)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -86,21 +89,43 @@ private struct RichEditorToolbarHost: View {
 }
 
 /// Format bar (Liquid Glass on iOS 26). Usable on its own, e.g. in a custom
-/// keyboard accessory.
+/// keyboard accessory. Shows `configuration.toolbarTools` (all by default),
+/// or `tools` when given, in that order.
 public struct RichEditorToolbar: View {
     @ObservedObject private var controller: RichEditorController
     @Environment(\.richContentStyle) private var style
+    private let customTools: [RichEditorTool]?
 
-    public init(controller: RichEditorController) {
+    public init(controller: RichEditorController, tools: [RichEditorTool]? = nil) {
         self.controller = controller
+        self.customTools = tools
     }
 
     private var allowed: Set<RichBlockType> { controller.configuration.allowedBlocks }
 
+    /// Requested tools, in order, without duplicates or ones the
+    /// configuration rules out (e.g. Image when images aren't allowed).
+    private var requested: [RichEditorTool] {
+        var seen = Set<RichEditorTool>()
+        return (customTools ?? controller.configuration.toolbarTools).filter { seen.insert($0).inserted && isAvailable($0) }
+    }
+
+    private func isAvailable(_ tool: RichEditorTool) -> Bool {
+        switch tool {
+        case .addBlock: return controller.configuration.slashCommands
+        case .todo: return allowed.contains(.todo)
+        case .bulletList: return allowed.contains(.bulletList)
+        case .numberedList: return allowed.contains(.numberedList)
+        case .toggle: return allowed.contains(.toggle)
+        case .image: return allowed.contains(.image)
+        default: return true
+        }
+    }
+
     public var body: some View {
         HStack(spacing: 0) {
             tools
-            if controller.isFocused {
+            if controller.isFocused, requested.contains(.hideKeyboard) {
                 // Pinned outside the scrolling tools, always one tap away.
                 divider
                 icon("keyboard.chevron.compact.down", "Hide keyboard") { controller.resignFocus() }
@@ -114,37 +139,53 @@ public struct RichEditorToolbar: View {
     }
 
     private var tools: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        // Hide Keyboard is pinned outside the scrolling tools (see `body`).
+        let shown = requested.filter { $0 != .hideKeyboard }
+        return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
-                if controller.configuration.slashCommands {
-                    icon("plus", "Add block") { controller.showCommandMenu() }
+                ForEach(Array(shown.enumerated()), id: \.element) { index, tool in
+                    // A separator wherever the group changes.
+                    if index > 0, shown[index - 1].group != tool.group { divider }
+                    button(for: tool)
                 }
-                turnIntoMenu
-                divider
-                ForEach([RichInlineFormat.bold, .italic, .underline, .strikethrough, .code], id: \.self) { format in
-                    icon(format.symbolName, format.title, isActive: controller.activeFormats.contains(format)) {
-                        controller.toggle(format)
-                    }
-                }
-                icon("link", "Link", isActive: controller.activeFormats.contains(.link)) { controller.beginLinkEditing() }
-                colorMenu
-                divider
-                ForEach([RichBlockType.todo, .bulletList, .numberedList, .toggle].filter { allowed.contains($0) }, id: \.self) { type in
-                    icon(type.symbolName, type.title, isActive: controller.blockType == type) { controller.toggleBlock(type) }
-                }
-                icon("decrease.indent", "Outdent", enabled: controller.canOutdent) { controller.outdent() }
-                icon("increase.indent", "Indent", enabled: controller.canIndent) { controller.indent() }
-                if allowed.contains(.image) {
-                    divider
-                    icon("photo", "Image") { controller.textView?.presentImagePicker() }
-                }
-                divider
-                icon("arrow.uturn.backward", "Undo", enabled: controller.canUndo) { controller.undo() }
-                icon("arrow.uturn.forward", "Redo", enabled: controller.canRedo) { controller.redo() }
             }
             .padding(.horizontal, 6)
         }
         .clipShape(Capsule())
+    }
+
+    @ViewBuilder
+    private func button(for tool: RichEditorTool) -> some View {
+        switch tool {
+        case .addBlock:
+            icon("plus", "Add block") { controller.showCommandMenu() }
+        case .turnInto:
+            turnIntoMenu
+        case .bold, .italic, .underline, .strikethrough, .code:
+            let format = tool.inlineFormat!
+            icon(format.symbolName, format.title, isActive: controller.activeFormats.contains(format)) {
+                controller.toggle(format)
+            }
+        case .link:
+            icon("link", "Link", isActive: controller.activeFormats.contains(.link)) { controller.beginLinkEditing() }
+        case .color:
+            colorMenu
+        case .todo, .bulletList, .numberedList, .toggle:
+            let type = tool.blockType!
+            icon(type.symbolName, type.title, isActive: controller.blockType == type) { controller.toggleBlock(type) }
+        case .outdent:
+            icon("decrease.indent", "Outdent", enabled: controller.canOutdent) { controller.outdent() }
+        case .indent:
+            icon("increase.indent", "Indent", enabled: controller.canIndent) { controller.indent() }
+        case .image:
+            icon("photo", "Image") { controller.textView?.presentImagePicker() }
+        case .undo:
+            icon("arrow.uturn.backward", "Undo", enabled: controller.canUndo) { controller.undo() }
+        case .redo:
+            icon("arrow.uturn.forward", "Redo", enabled: controller.canRedo) { controller.redo() }
+        case .hideKeyboard:
+            EmptyView()
+        }
     }
 
     // MARK: Pieces

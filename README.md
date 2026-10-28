@@ -260,6 +260,25 @@ editor.quotedOriginal = nil   // remove it
 The editor's HTML import is its own parser (no WebKit), so loading is fast
 and works off-screen and in previews.
 
+### Format bar
+
+`.richEditorToolbar(editor)` shows every tool by default. To show only some,
+list them (in the order to show them) from the `RichEditorTool` presets;
+separators are added between groups:
+
+```swift
+config.toolbarTools = [.bold, .italic, .underline, .link, .color,
+                       .bulletList, .numberedList, .image, .undo, .redo, .hideKeyboard]
+// or per bar:
+.richEditorToolbar(editor, tools: RichEditorTool.basic)
+```
+
+Tools: `addBlock`, `turnInto`, `bold`, `italic`, `underline`, `strikethrough`,
+`code`, `link`, `color`, `todo`, `bulletList`, `numberedList`, `toggle`,
+`outdent`, `indent`, `image`, `undo`, `redo`, `hideKeyboard`. Tools the
+configuration rules out (Image without `.image` in `allowedBlocks`, `addBlock`
+without `slashCommands`) stay hidden.
+
 ### Image uploads
 
 Picked and pasted images are scaled to `maxImagePixelSize` and shown at once.

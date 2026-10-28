@@ -27,6 +27,10 @@ public struct RichEditorConfiguration {
     /// Remove Image. The failed image also keeps a badge; tapping it offers
     /// the same choices.
     public var showsImageUploadFailureAlert = true
+    /// Buttons in the format bar, in order (all by default). Tools the rest
+    /// of the configuration rules out (e.g. Image without `.image` in
+    /// `allowedBlocks`) are left out.
+    public var toolbarTools: [RichEditorTool] = RichEditorTool.all
 
     public init() {}
 
