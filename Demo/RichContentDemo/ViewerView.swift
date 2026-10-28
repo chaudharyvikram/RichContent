@@ -22,7 +22,7 @@ struct ViewerView: View {
                 .navigationTitle(sample.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    // Remote images are blocked by default, like Mail (no tracking pixels).
+                    // Remote images load by default; turn off to block them like Mail (no tracking pixels).
                     Toggle(isOn: $loadsRemoteImages) {
                         Label("Load remote images", systemImage: "photo")
                     }
@@ -36,7 +36,7 @@ struct ViewerView: View {
         }
     }
 
-    @State private var loadsRemoteImages = false
+    @State private var loadsRemoteImages = true
 
     private var style: RichContentStyle {
         var style = RichContentStyle.email

@@ -2,8 +2,8 @@ import UIKit
 import WebKit
 
 /// Sandboxed, non-scrolling web view for HTML that needs a browser engine.
-/// - Page JavaScript is disabled; remote content is blocked unless
-///   `style.allowsRemoteContent` is on (via a Content-Security-Policy).
+/// - Page JavaScript is disabled; remote content loads unless
+///   `style.allowsRemoteContent` is off (then blocked by a Content-Security-Policy).
 /// - Reports its content height so it can sit inside a SwiftUI / UIKit scroll view.
 public final class RichWebContentView: UIView, WKNavigationDelegate {
 

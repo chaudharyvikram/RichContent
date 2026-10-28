@@ -72,6 +72,11 @@ final class HTMLRendererTests: XCTestCase {
 
     // MARK: Remote images go to the web view
 
+    func testRemoteContentLoadsByDefault() {
+        XCTAssertTrue(RichContentStyle().allowsRemoteContent)
+        XCTAssertTrue(RichContentStyle.email.allowsRemoteContent)
+    }
+
     func testImagesPreferWebView() {
         XCTAssertTrue(HTMLRenderer.prefersWebView(#"<p><img src="https://t.co/photo.jpg"></p>"#))
     }

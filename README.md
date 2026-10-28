@@ -70,7 +70,7 @@ let attributed = RichContentRenderer.attributedString(for: .markdown(notes))
 | `.attributed` | as-is, or Markdown layout | If it came from `AttributedString(markdown:)` its blocks are laid out; UIKit fonts/colors kept, missing ones filled from the style |
 | `.nsAttributed` | as-is | Missing font / color / paragraph style filled from the style |
 | `.html` (simple) | `HTMLRenderer` → native text | `<blockquote>` → same quote bars; fonts mapped to the app font, near-black → `label` (dark mode), compact spacing, no network |
-| `.html` (tables, images, media) | `RichWebContentView` | Sandboxed `WKWebView`: JS off, remote content blocked by CSP unless `allowsRemoteContent`, auto-height, links routed to `openURL`, light/dark CSS from the style |
+| `.html` (tables, images, media) | `RichWebContentView` | Sandboxed `WKWebView`: JS off, remote content loads unless `allowsRemoteContent` is off (then blocked by CSP), auto-height, links routed to `openURL`, light/dark CSS from the style |
 | `.mixed` | all of the above | Consecutive native parts merge into **one** selectable text view; web parts sit between them |
 
 `htmlRendering` = `.automatic` (default), `.native` or `.web` overrides the routing.
@@ -92,7 +92,7 @@ Wide email HTML (600px newsletters) is scaled down to fit the view width.
 var style = RichContentStyle.email
 style.linkColor = UIColor(named: "Accent")!
 style.quoteBarColor = .systemPurple.withAlphaComponent(0.35)
-style.allowsRemoteContent = user.loadsRemoteImages
+style.allowsRemoteContent = user.loadsRemoteImages   // on by default; off blocks tracking pixels
 RichContentView(content).richContentStyle(style)
 ```
 
