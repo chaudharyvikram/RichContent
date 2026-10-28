@@ -37,18 +37,18 @@ enum EditorMenus {
                 controller.presentColorPicker(background: background, wholeBlock: wholeBlock)
             }
         }
-        // Inline groups get separators: picker | asset colors | built-in palette.
-        func section(_ title: String, background isBackground: Bool, _ item: (RichColor) -> UIAction) -> UIMenu {
-            let groups = [[picker(background: isBackground)],
-                          controller.configuration.assetColors.map(item),
-                          RichColor.allCases.map(item)]
-            return UIMenu(title: title, options: .displayInline,
-                          children: groups.filter { !$0.isEmpty }.map { UIMenu(options: .displayInline, children: $0) })
+        // Flat inline groups, separated: the titled picker group heads each
+        // section, then asset colors, then the built-in palette. (Nested
+        // inline menus would drop the section titles.)
+        func section(_ title: String, background isBackground: Bool, _ item: (RichColor) -> UIAction) -> [UIMenu] {
+            let assets = controller.configuration.assetColors.map(item)
+            return [UIMenu(title: title, options: .displayInline, children: [picker(background: isBackground)])]
+                + (assets.isEmpty ? [] : [UIMenu(options: .displayInline, children: assets)])
+                + [UIMenu(options: .displayInline, children: RichColor.allCases.map(item))]
         }
-        return UIMenu(title: "Color", image: UIImage(systemName: "paintpalette"), children: [
-            section("Text colors", background: false, text),
-            section("Background colors", background: true, background)
-        ])
+        return UIMenu(title: "Color", image: UIImage(systemName: "paintpalette"),
+                      children: section("Text colors", background: false, text)
+                        + section("Background colors", background: true, background))
     }
 
     /// "A" in the color, or a filled square for backgrounds.

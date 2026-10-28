@@ -187,28 +187,21 @@ public struct RichEditorToolbar: View {
     private var colorMenu: some View {
         let assets = controller.configuration.assetColors
         return Menu {
+            // Sections are separated; the titled one heads each group.
             Section("Text colors") {
                 Button { controller.presentColorPicker(background: false) } label: {
                     Label("Choose from color picker…", systemImage: "eyedropper")
                 }
-                Divider()
-                if !assets.isEmpty {
-                    textButtons(assets)
-                    Divider()
-                }
-                textButtons(RichColor.allCases)
             }
+            if !assets.isEmpty { Section { textButtons(assets) } }
+            Section { textButtons(RichColor.allCases) }
             Section("Background colors") {
                 Button { controller.presentColorPicker(background: true) } label: {
                     Label("Choose from color picker…", systemImage: "eyedropper")
                 }
-                Divider()
-                if !assets.isEmpty {
-                    backgroundButtons(assets)
-                    Divider()
-                }
-                backgroundButtons(RichColor.allCases)
             }
+            if !assets.isEmpty { Section { backgroundButtons(assets) } }
+            Section { backgroundButtons(RichColor.allCases) }
         } label: {
             ToolbarIcon(systemName: "paintpalette", isActive: controller.textColor != .default || controller.highlight != .default,
                         accent: accent)
